@@ -1,13 +1,26 @@
 import { useState } from "react";
-import { streamChat } from "./api/chat";
+import { streamChat, type ChatMessage } from "./api/chat";
 import { useThreads } from "./state/useThreads";
-import { DEFAULT_MODEL } from "./state/types";
+import { DEFAULT_MODEL, type Message } from "./state/types";
 import { stripThinking } from "./lib/thinking";
 import { MessageList } from "./ui/MessageList";
 import { Composer } from "./ui/Composer";
 import { ModelPicker } from "./ui/ModelPicker";
 import { ThreadDrawer } from "./ui/ThreadDrawer";
 import "./App.css";
+
+function toApiMessage(m: Message): ChatMessage {
+  if (!m.images || m.images.length === 0) {
+    return { role: m.role, content: m.content };
+  }
+  return {
+    role: m.role,
+    content: [
+      { type: "text", text: m.content },
+      ...m.images.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+    ],
+  };
+}
 
 export default function App() {
   const {
@@ -32,18 +45,16 @@ export default function App() {
     return thread ?? createThread();
   }
 
-  async function handleSend(text: string) {
+  async function handleSend(text: string, images?: string[]) {
     const t = ensureThread();
     setError(null);
 
-    appendMessage(t.id, { id: newId(), role: "user", content: text });
+    const userMessage: Message = { id: newId(), role: "user", content: text, images };
+    appendMessage(t.id, userMessage);
     const assistantId = newId();
     appendMessage(t.id, { id: assistantId, role: "assistant", content: "" });
 
-    const history = [...t.messages, { id: "", role: "user" as const, content: text }].map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const history = [...t.messages, userMessage].map(toApiMessage);
 
     setStreaming(true);
     let rawText = "";

@@ -4,6 +4,7 @@ export interface Message {
   id: string;
   role: Role;
   content: string;
+  images?: string[]; // data URLs, attached by the user
 }
 
 export interface Thread {

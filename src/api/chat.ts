@@ -1,6 +1,15 @@
+export type ChatContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
+export interface ChatMessage {
+  role: string;
+  content: string | ChatContentPart[];
+}
+
 export interface StreamChatParams {
   model: string;
-  messages: { role: string; content: string }[];
+  messages: ChatMessage[];
   onDelta: (text: string) => void;
   onDone: () => void;
   onError: (message: string) => void;

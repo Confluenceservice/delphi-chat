@@ -1,20 +1,36 @@
 import { useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { ChangeEvent, KeyboardEvent } from "react";
 
 interface Props {
   disabled: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, images?: string[]) => void;
+}
+
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // MiniMax vision limit
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 
 export function Composer({ disabled, onSend }: Props) {
   const [value, setValue] = useState("");
+  const [images, setImages] = useState<string[]>([]);
+  const [imageError, setImageError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function submit() {
     const text = value.trim();
-    if (!text || disabled) return;
-    onSend(text);
+    if ((!text && images.length === 0) || disabled) return;
+    onSend(text, images.length > 0 ? images : undefined);
     setValue("");
+    setImages([]);
+    setImageError(null);
     textareaRef.current?.focus();
   }
 
@@ -25,25 +41,79 @@ export function Composer({ disabled, onSend }: Props) {
     }
   }
 
+  async function handleFiles(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    setImageError(null);
+
+    const oversized = files.find((f) => f.size > MAX_IMAGE_BYTES);
+    if (oversized) {
+      setImageError(`${oversized.name} is over the 10MB limit`);
+      return;
+    }
+
+    const dataUrls = await Promise.all(files.map(fileToDataUrl));
+    setImages((prev) => [...prev, ...dataUrls]);
+  }
+
+  function removeImage(index: number) {
+    setImages((prev) => prev.filter((_, i) => i !== index));
+  }
+
   return (
     <div className="composer">
-      <textarea
-        ref={textareaRef}
-        className="composer__input"
-        placeholder="Message MiniMax…"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        rows={1}
-      />
-      <button
-        className="composer__send"
-        onClick={submit}
-        disabled={disabled || !value.trim()}
-        aria-label="Send message"
-      >
-        ↑
-      </button>
+      {images.length > 0 && (
+        <div className="composer__previews">
+          {images.map((src, i) => (
+            <div key={i} className="composer__preview">
+              <img src={src} alt="" />
+              <button
+                className="composer__preview-remove"
+                onClick={() => removeImage(i)}
+                aria-label="Remove image"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {imageError && <div className="composer__error">{imageError}</div>}
+      <div className="composer__row">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          multiple
+          hidden
+          onChange={handleFiles}
+        />
+        <button
+          className="composer__attach"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled}
+          aria-label="Attach image"
+        >
+          📎
+        </button>
+        <textarea
+          ref={textareaRef}
+          className="composer__input"
+          placeholder="Message MiniMax…"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          rows={1}
+        />
+        <button
+          className="composer__send"
+          onClick={submit}
+          disabled={disabled || (!value.trim() && images.length === 0)}
+          aria-label="Send message"
+        >
+          ↑
+        </button>
+      </div>
     </div>
   );
 }
