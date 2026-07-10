@@ -7,6 +7,8 @@ import { MessageList } from "./ui/MessageList";
 import { Composer } from "./ui/Composer";
 import { ModelPicker } from "./ui/ModelPicker";
 import { ThreadDrawer } from "./ui/ThreadDrawer";
+import { ConversationMode } from "./ui/ConversationMode";
+import { unlockAudio } from "./audio/player";
 import "./App.css";
 
 function toApiMessage(m: Message): ChatMessage {
@@ -38,6 +40,7 @@ export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conversationOpen, setConversationOpen] = useState(false);
 
   const thread = activeThread ?? null;
 
@@ -45,7 +48,7 @@ export default function App() {
     return thread ?? createThread();
   }
 
-  async function handleSend(text: string, images?: string[]) {
+  async function handleSend(text: string, images?: string[]): Promise<string> {
     const t = ensureThread();
     setError(null);
 
@@ -58,22 +61,26 @@ export default function App() {
 
     setStreaming(true);
     let rawText = "";
+    let finalText = "";
 
     await streamChat({
       model: t.model,
       messages: history,
       onDelta: (delta) => {
         rawText += delta;
-        updateMessage(t.id, assistantId, stripThinking(rawText));
+        finalText = stripThinking(rawText);
+        updateMessage(t.id, assistantId, finalText);
       },
       onDone: () => setStreaming(false),
       onError: (message) => {
         setStreaming(false);
         setError(message);
-        const visible = stripThinking(rawText);
-        updateMessage(t.id, assistantId, visible || `⚠️ ${message}`);
+        finalText = stripThinking(rawText);
+        updateMessage(t.id, assistantId, finalText || `⚠️ ${message}`);
       },
     });
+
+    return finalText;
   }
 
   return (
@@ -87,6 +94,16 @@ export default function App() {
           value={thread?.model ?? DEFAULT_MODEL}
           onChange={(model) => thread && setThreadModel(thread.id, model)}
         />
+        <button
+          className="app__conversation-toggle"
+          onClick={() => {
+            void unlockAudio();
+            setConversationOpen(true);
+          }}
+          aria-label="Start conversation mode"
+        >
+          📞
+        </button>
       </header>
 
       {error && <div className="app__error">{error}</div>}
@@ -98,6 +115,13 @@ export default function App() {
       <footer className="app__footer">
         <Composer disabled={streaming} onSend={handleSend} />
       </footer>
+
+      {conversationOpen && (
+        <ConversationMode
+          onUserUtterance={(text) => handleSend(text)}
+          onClose={() => setConversationOpen(false)}
+        />
+      )}
 
       <ThreadDrawer
         open={drawerOpen}

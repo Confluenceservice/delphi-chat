@@ -12,6 +12,24 @@ function getAudioEl(): HTMLAudioElement {
   return audioEl;
 }
 
+// A tiny silent WAV, used to "unlock" the shared audio element inside a
+// user-gesture handler so later async playback (after fetch/TTS latency)
+// is allowed by mobile autoplay restrictions.
+const SILENT_WAV =
+  "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+
+export async function unlockAudio(): Promise<void> {
+  const el = getAudioEl();
+  el.src = SILENT_WAV;
+  try {
+    await el.play();
+    el.pause();
+    el.currentTime = 0;
+  } catch {
+    // best effort — some browsers still allow playback later in this gesture chain
+  }
+}
+
 export async function playBlob(blob: Blob): Promise<void> {
   const el = getAudioEl();
   if (currentUrl) {
