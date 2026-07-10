@@ -1,0 +1,14 @@
+name = "minimax-chat"
+main = "worker/index.ts"
+compatibility_date = "2026-07-01"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[vars]
+MINIMAX_BASE_URL = "https://api.minimax.io"
+ASR_PROVIDER = "groq"
+ASR_BASE_URL = "https://api.groq.com/openai/v1"
+ASR_MODEL = "whisper-large-v3-turbo"

@@ -1,0 +1,83 @@
+import type { Env } from "./types";
+
+interface ChatRequestBody {
+  model: string;
+  messages: unknown[];
+}
+
+// Memory retrieval seam — no-op until M6 (Vectorize + D1 wired in).
+async function retrieveMemories(_env: Env, _messages: unknown[]): Promise<string | null> {
+  return null;
+}
+
+export async function handleChat(request: Request, env: Env): Promise<Response> {
+  if (!env.MINIMAX_API_KEY) {
+    return jsonError("MINIMAX_API_KEY not configured", 500);
+  }
+
+  let body: ChatRequestBody;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonError("Invalid JSON body", 400);
+  }
+
+  if (!body.model || !Array.isArray(body.messages)) {
+    return jsonError("Body must include { model, messages }", 400);
+  }
+
+  const messages = [...body.messages];
+  const memoryContext = await retrieveMemories(env, messages);
+  if (memoryContext) {
+    messages.unshift({
+      role: "system",
+      content: `Relevant things you remember about the user:\n${memoryContext}`,
+    });
+  }
+
+  const url = new URL(`${env.MINIMAX_BASE_URL}/v1/chat/completions`);
+  if (env.MINIMAX_GROUP_ID) {
+    url.searchParams.set("GroupId", env.MINIMAX_GROUP_ID);
+  }
+
+  const upstream = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.MINIMAX_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: body.model,
+      messages,
+      stream: true,
+    }),
+  });
+
+  if (upstream.status === 429) {
+    return jsonError(
+      "Token Plan quota reached — retry after the 5h/weekly window resets.",
+      429,
+    );
+  }
+
+  if (!upstream.ok || !upstream.body) {
+    const text = await upstream.text().catch(() => "");
+    return jsonError(`MiniMax chat request failed: ${text || upstream.statusText}`, upstream.status);
+  }
+
+  return new Response(upstream.body, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+
+function jsonError(message: string, status: number): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
