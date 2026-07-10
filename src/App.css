@@ -162,6 +162,45 @@
   cursor: default;
 }
 
+.mic-button-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.mic-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  font-size: 18px;
+  touch-action: none;
+  user-select: none;
+}
+
+.mic-button--active {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+.mic-button:disabled {
+  opacity: 0.4;
+}
+
+.mic-button__error {
+  position: absolute;
+  bottom: 52px;
+  right: 0;
+  width: max-content;
+  max-width: 200px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
 .composer__previews {
   display: flex;
   gap: 8px;

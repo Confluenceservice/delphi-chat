@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import type { ChangeEvent, KeyboardEvent } from "react";
+import { MicButton } from "./MicButton";
 
 interface Props {
   disabled: boolean;
@@ -105,6 +106,7 @@ export function Composer({ disabled, onSend }: Props) {
           onKeyDown={handleKeyDown}
           rows={1}
         />
+        <MicButton disabled={disabled} onTranscript={(text) => onSend(text)} />
         <button
           className="composer__send"
           onClick={submit}
