@@ -9,6 +9,7 @@ import { ModelPicker } from "./ui/ModelPicker";
 import { ThreadDrawer } from "./ui/ThreadDrawer";
 import { ConversationMode } from "./ui/ConversationMode";
 import { unlockAudio } from "./audio/player";
+import { ingestMemory } from "./api/memory";
 import "./App.css";
 
 function toApiMessage(m: Message): ChatMessage {
@@ -79,6 +80,10 @@ export default function App() {
         updateMessage(t.id, assistantId, finalText || `⚠️ ${message}`);
       },
     });
+
+    if (finalText.trim()) {
+      ingestMemory(text, finalText);
+    }
 
     return finalText;
   }

@@ -7,4 +7,7 @@ export interface Env {
   ASR_PROVIDER: string;
   ASR_BASE_URL: string;
   ASR_MODEL: string;
+  AI: Ai;
+  VECTORIZE: VectorizeIndex;
+  DB: D1Database;
 }

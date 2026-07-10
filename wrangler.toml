@@ -12,3 +12,15 @@ MINIMAX_BASE_URL = "https://api.minimax.io"
 ASR_PROVIDER = "groq"
 ASR_BASE_URL = "https://api.groq.com/openai/v1"
 ASR_MODEL = "whisper-large-v3-turbo"
+
+[ai]
+binding = "AI"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "minimax-memory"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "minimax-chat-memory"
+database_id = "<YOUR_D1_DATABASE_ID>"

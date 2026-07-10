@@ -1,13 +1,29 @@
 import type { Env } from "./types";
+import { retrieveMemories } from "./memory";
 
 interface ChatRequestBody {
   model: string;
   messages: unknown[];
 }
 
-// Memory retrieval seam — no-op until M6 (Vectorize + D1 wired in).
-async function retrieveMemories(_env: Env, _messages: unknown[]): Promise<string | null> {
-  return null;
+interface ChatMessageShape {
+  role?: string;
+  content?: string | { type?: string; text?: string }[];
+}
+
+function extractLatestUserText(messages: unknown[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i] as ChatMessageShape;
+    if (m?.role !== "user") continue;
+    if (typeof m.content === "string") return m.content;
+    if (Array.isArray(m.content)) {
+      return m.content
+        .filter((part) => part?.type === "text" && part.text)
+        .map((part) => part.text)
+        .join(" ");
+    }
+  }
+  return "";
 }
 
 export async function handleChat(request: Request, env: Env): Promise<Response> {
@@ -27,7 +43,10 @@ export async function handleChat(request: Request, env: Env): Promise<Response> 
   }
 
   const messages = [...body.messages];
-  const memoryContext = await retrieveMemories(env, messages);
+  const latestUserText = extractLatestUserText(messages);
+  const memoryContext = latestUserText
+    ? await retrieveMemories(env, latestUserText).catch(() => null)
+    : null;
   if (memoryContext) {
     messages.unshift({
       role: "system",
