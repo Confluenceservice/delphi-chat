@@ -10,6 +10,7 @@ export interface ChatMessage {
 export interface StreamChatParams {
   model: string;
   messages: ChatMessage[];
+  memory: boolean;
   onDelta: (text: string) => void;
   onDone: () => void;
   onError: (message: string) => void;
@@ -19,6 +20,7 @@ export interface StreamChatParams {
 export async function streamChat({
   model,
   messages,
+  memory,
   onDelta,
   onDone,
   onError,
@@ -29,7 +31,7 @@ export async function streamChat({
     response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages }),
+      body: JSON.stringify({ model, messages, memory }),
       signal,
     });
   } catch (err) {

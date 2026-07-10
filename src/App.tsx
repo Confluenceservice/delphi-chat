@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { streamChat, type ChatMessage } from "./api/chat";
 import { useThreads } from "./state/useThreads";
+import { useSettings } from "./state/useSettings";
 import { DEFAULT_MODEL, type Message } from "./state/types";
 import { stripThinking } from "./lib/thinking";
 import { MessageList } from "./ui/MessageList";
@@ -8,6 +9,7 @@ import { Composer } from "./ui/Composer";
 import { ModelPicker } from "./ui/ModelPicker";
 import { ThreadDrawer } from "./ui/ThreadDrawer";
 import { ConversationMode } from "./ui/ConversationMode";
+import { Settings } from "./ui/Settings";
 import { unlockAudio } from "./audio/player";
 import { ingestMemory } from "./api/memory";
 import "./App.css";
@@ -38,10 +40,12 @@ export default function App() {
     updateMessage,
     newId,
   } = useThreads();
+  const { memoryEnabled, setMemoryEnabled } = useSettings();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conversationOpen, setConversationOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const thread = activeThread ?? null;
 
@@ -67,6 +71,7 @@ export default function App() {
     await streamChat({
       model: t.model,
       messages: history,
+      memory: memoryEnabled,
       onDelta: (delta) => {
         rawText += delta;
         finalText = stripThinking(rawText);
@@ -81,7 +86,7 @@ export default function App() {
       },
     });
 
-    if (finalText.trim()) {
+    if (memoryEnabled && finalText.trim()) {
       ingestMemory(text, finalText);
     }
 
@@ -108,6 +113,13 @@ export default function App() {
           aria-label="Start conversation mode"
         >
           📞
+        </button>
+        <button
+          className="app__settings-toggle"
+          onClick={() => setSettingsOpen(true)}
+          aria-label="Open settings"
+        >
+          ⚙️
         </button>
       </header>
 
@@ -149,6 +161,13 @@ export default function App() {
         }}
         onDelete={deleteThread}
         onClose={() => setDrawerOpen(false)}
+      />
+
+      <Settings
+        open={settingsOpen}
+        memoryEnabled={memoryEnabled}
+        onToggleMemory={setMemoryEnabled}
+        onClose={() => setSettingsOpen(false)}
       />
     </div>
   );

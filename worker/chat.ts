@@ -4,6 +4,7 @@ import { retrieveMemories } from "./memory";
 interface ChatRequestBody {
   model: string;
   messages: unknown[];
+  memory?: boolean;
 }
 
 interface ChatMessageShape {
@@ -43,7 +44,8 @@ export async function handleChat(request: Request, env: Env): Promise<Response> 
   }
 
   const messages = [...body.messages];
-  const latestUserText = extractLatestUserText(messages);
+  const memoryEnabled = body.memory !== false;
+  const latestUserText = memoryEnabled ? extractLatestUserText(messages) : "";
   const memoryContext = latestUserText
     ? await retrieveMemories(env, latestUserText).catch(() => null)
     : null;
