@@ -2,6 +2,7 @@ import { useState } from "react";
 import { streamChat } from "./api/chat";
 import { useThreads } from "./state/useThreads";
 import { DEFAULT_MODEL } from "./state/types";
+import { stripThinking } from "./lib/thinking";
 import { MessageList } from "./ui/MessageList";
 import { Composer } from "./ui/Composer";
 import { ModelPicker } from "./ui/ModelPicker";
@@ -45,20 +46,21 @@ export default function App() {
     }));
 
     setStreaming(true);
-    let assistantText = "";
+    let rawText = "";
 
     await streamChat({
       model: t.model,
       messages: history,
       onDelta: (delta) => {
-        assistantText += delta;
-        updateMessage(t.id, assistantId, assistantText);
+        rawText += delta;
+        updateMessage(t.id, assistantId, stripThinking(rawText));
       },
       onDone: () => setStreaming(false),
       onError: (message) => {
         setStreaming(false);
         setError(message);
-        updateMessage(t.id, assistantId, assistantText || `⚠️ ${message}`);
+        const visible = stripThinking(rawText);
+        updateMessage(t.id, assistantId, visible || `⚠️ ${message}`);
       },
     });
   }
