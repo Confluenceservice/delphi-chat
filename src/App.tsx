@@ -106,7 +106,14 @@ export default function App() {
         </button>
       </header>
 
-      {error && <div className="app__error">{error}</div>}
+      {error && (
+        <div className="app__error">
+          <span>{error}</span>
+          <button className="app__error-dismiss" onClick={() => setError(null)} aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      )}
 
       <main className="app__main">
         <MessageList messages={thread?.messages ?? []} streaming={streaming} />

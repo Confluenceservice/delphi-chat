@@ -42,6 +42,22 @@
   color: #fff;
   padding: 8px 12px;
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app__error span {
+  flex: 1;
+}
+
+.app__error-dismiss {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
 }
 
 .app__main {

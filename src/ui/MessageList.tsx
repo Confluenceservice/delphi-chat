@@ -14,7 +14,7 @@ interface Props {
 export function MessageList({ messages, streaming }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
-  const [speakError, setSpeakError] = useState<string | null>(null);
+  const [speakError, setSpeakError] = useState<{ id: string; message: string } | null>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -32,7 +32,7 @@ export function MessageList({ messages, streaming }: Props) {
       const blob = await synthesizeSpeech(message.content);
       await playBlob(blob);
     } catch (err) {
-      setSpeakError(err instanceof Error ? err.message : "Speech failed");
+      setSpeakError({ id: message.id, message: err instanceof Error ? err.message : "Speech failed" });
       setSpeakingId(null);
       return;
     }
@@ -67,8 +67,8 @@ export function MessageList({ messages, streaming }: Props) {
               </button>
             )}
           </div>
-          {speakError && speakingId === null && (
-            <div className="message__speak-error">{speakError}</div>
+          {speakError?.id === m.id && (
+            <div className="message__speak-error">{speakError.message}</div>
           )}
         </div>
       ))}
