@@ -19,6 +19,12 @@ const LABELS: Record<ConvState, string> = {
   error: "Something went wrong",
 };
 
+// Manual endpointing: a frame counts as "voice present" above this probability
+// (kept above the ambient-noise floor), and a turn ends after this much
+// continuous silence. Replaces vad-web's unreliable-on-mobile auto-endpointer.
+const VOICE_PRESENT_THRESHOLD = 0.5;
+const SILENCE_TIMEOUT_MS = 1000;
+
 export function ConversationMode({ onUserUtterance, onClose }: Props) {
   const [state, setState] = useState<ConvState>("starting");
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +37,10 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
   const frameCountRef = useRef(0);
   const lastProbRef = useRef(0);
   const misfireCountRef = useRef(0);
+  // Manual endpointing state: are we inside a spoken turn, and when did we
+  // last hear voice above threshold.
+  const speechActiveRef = useRef(false);
+  const lastVoiceTsRef = useRef(0);
   // handleSend gets a new identity on every App render (it re-renders on
   // every streamed delta) — read the latest via ref so the VAD/mic lifecycle
   // below only ties to mount/unmount, not to that churn.
@@ -90,18 +100,40 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
       try {
         const { createVad } = await import("../audio/vad");
         const vad = await createVad({
-          onSpeechStart: () => setTrace("speech started…"),
+          onSpeechStart: () => {
+            speechActiveRef.current = true;
+            lastVoiceTsRef.current = performance.now();
+            setTrace("speech started…");
+          },
           onSpeechEnd: (wavBlob) => {
+            speechActiveRef.current = false;
             setTrace(`speechEnd fired (${Math.round(wavBlob.size / 1024)}KB)`);
             void handleUtterance(wavBlob);
           },
           onMisfire: () => {
+            speechActiveRef.current = false;
             misfireCountRef.current += 1;
-            setTrace(`misfire #${misfireCountRef.current} (segment too short) — talk longer`);
+            setTrace(`misfire #${misfireCountRef.current} (noise) — ignored`);
           },
           onFrameProcessed: (prob) => {
             frameCountRef.current += 1;
             lastProbRef.current = prob;
+            const now = performance.now();
+            if (prob >= VOICE_PRESENT_THRESHOLD) {
+              lastVoiceTsRef.current = now;
+            }
+            // Once we're in a turn and have heard nothing but silence for the
+            // timeout, force the endpoint ourselves. pause() flushes the
+            // buffered speech through onSpeechEnd (submitUserSpeechOnPause).
+            if (
+              speechActiveRef.current &&
+              stateRef.current === "listening" &&
+              now - lastVoiceTsRef.current > SILENCE_TIMEOUT_MS
+            ) {
+              speechActiveRef.current = false;
+              setTrace("silence detected → ending turn");
+              void vadRef.current?.pause();
+            }
           },
         });
         if (cancelled) {

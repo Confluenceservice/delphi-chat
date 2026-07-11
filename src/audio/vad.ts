@@ -36,6 +36,17 @@ export async function createVad(callbacks: VadCallbacks): Promise<VadHandle> {
     ortConfig: (ort) => {
       ort.env.wasm.numThreads = 1;
     },
+    // vad-web's built-in redemption endpointer is fragile on mobile mics
+    // (any brief probability spike from breathing/ambient noise resets the
+    // silence counter, so onSpeechEnd never fires). We drive turn-end
+    // ourselves via a silence timer + pause(); submitUserSpeechOnPause makes
+    // that pause flush the buffered speech through onSpeechEnd.
+    submitUserSpeechOnPause: true,
+    minSpeechMs: 250,
+    // Require fairly confident speech to *start* a turn so background noise
+    // doesn't keep firing spurious start/misfire cycles on a phone mic.
+    positiveSpeechThreshold: 0.6,
+    negativeSpeechThreshold: 0.4,
     onSpeechStart: () => callbacks.onSpeechStart(),
     onSpeechEnd: (audio) => {
       const wavBuffer = utils.encodeWAV(audio, undefined, 16000, 1, 16);
