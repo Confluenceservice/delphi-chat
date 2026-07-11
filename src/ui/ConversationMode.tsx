@@ -23,6 +23,7 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
   const [state, setState] = useState<ConvState>("starting");
   const [error, setError] = useState<string | null>(null);
   const [debug, setDebug] = useState({ frames: 0, prob: 0 });
+  const [trace, setTrace] = useState<string>("waiting for speech…");
   const vadRef = useRef<VadHandle | null>(null);
   const stateRef = useRef<ConvState>("starting");
   // Diagnostic-only: proves whether mic audio is actually reaching the VAD
@@ -46,28 +47,39 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
     let cancelled = false;
 
     async function handleUtterance(wavBlob: Blob) {
-      if (stateRef.current !== "listening") return; // ignore late/duplicate speech-end events
+      if (stateRef.current !== "listening") {
+        setTrace(`speechEnd ignored (state=${stateRef.current})`);
+        return; // ignore late/duplicate speech-end events
+      }
       await vadRef.current?.pause();
       setState("thinking");
       try {
+        setTrace(`transcribing ${Math.round(wavBlob.size / 1024)}KB…`);
         const transcript = await transcribeAudio(wavBlob, "audio/wav");
         if (!transcript.trim()) {
+          setTrace("transcript was empty → back to listening");
           setState("listening");
           await vadRef.current?.start();
           return;
         }
+        setTrace(`heard: "${transcript.slice(0, 40)}" → chat…`);
         const reply = await onUserUtteranceRef.current(transcript);
         if (!reply.trim()) {
+          setTrace("chat reply empty → back to listening");
           setState("listening");
           await vadRef.current?.start();
           return;
         }
+        setTrace("synthesizing speech…");
         setState("speaking");
         const audioBlob = await synthesizeSpeech(reply);
         await playBlob(audioBlob);
+        setTrace("playing reply…");
         // resumed by the onPlaybackEnded listener below
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong");
+        const msg = err instanceof Error ? err.message : "Something went wrong";
+        setTrace(`error: ${msg}`);
+        setError(msg);
         setState("listening");
         await vadRef.current?.start();
       }
@@ -77,8 +89,9 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
       try {
         const { createVad } = await import("../audio/vad");
         const vad = await createVad({
-          onSpeechStart: () => {},
+          onSpeechStart: () => setTrace("speech started…"),
           onSpeechEnd: (wavBlob) => {
+            setTrace(`speechEnd fired (${Math.round(wavBlob.size / 1024)}KB)`);
             void handleUtterance(wavBlob);
           },
           onFrameProcessed: (prob) => {
@@ -129,6 +142,8 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
       <div className="conversation-mode__label">{LABELS[state]}</div>
       <div className="conversation-mode__debug">
         frames: {debug.frames} · p(speech): {debug.prob.toFixed(2)}
+        <br />
+        {trace}
       </div>
       {error && <div className="conversation-mode__error">{error}</div>}
       <button className="conversation-mode__stop" onClick={onClose}>
