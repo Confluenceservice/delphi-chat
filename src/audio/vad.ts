@@ -98,7 +98,11 @@ export async function createVad(callbacks: VadCallbacks): Promise<VadHandle> {
           const durationMs = (totalSamples / SAMPLE_RATE) * 1000;
           if (durationMs >= MIN_SPEECH_MS) {
             const audio = concatFrames(frames, totalSamples);
-            const wavBuffer = utils.encodeWAV(audio, undefined, SAMPLE_RATE, 1, 16);
+            // format MUST be 1 (16-bit PCM) to match bitDepth 16. encodeWAV's
+            // default format is 3 (IEEE float / 32-bit); pairing that default
+            // with bitDepth 16 allocates a half-size buffer and throws
+            // "Out of bounds access" when it writes 32-bit floats into it.
+            const wavBuffer = utils.encodeWAV(audio, 1, SAMPLE_RATE, 1, 16);
             callbacks.onSpeechEnd(new Blob([wavBuffer], { type: "audio/wav" }));
           } else {
             callbacks.onMisfire?.();
