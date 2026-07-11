@@ -1,11 +1,16 @@
 import type { Env } from "./types";
 import { embed } from "./embed";
 
-// Single fixed namespace since v1 has no login/multi-user accounts.
+// D1 `namespace` column is vestigial from the pre-auth design; the real
+// per-user partition is user_email. For Vectorize (dedup only), we scope by
+// the *indexed* namespace field set to the user's email — Vectorize refuses to
+// filter on un-indexed metadata, and only `namespace` has a metadata index.
 const NAMESPACE = "default";
-const RETRIEVAL_TOP_K = 5;
-const RETRIEVAL_MIN_SCORE = 0.5;
 const DEDUP_SCORE_THRESHOLD = 0.93;
+// Personal app with a small fact set per user: inject them all every turn
+// rather than semantically retrieving a subset, so the assistant reliably
+// knows the user regardless of how the current message is phrased.
+const MAX_INJECTED_FACTS = 40;
 
 export interface MemoryFactRow {
   id: string;
@@ -63,20 +68,18 @@ function parseFactsJson(text: string): string[] {
   return [];
 }
 
-export async function retrieveMemories(env: Env, userEmail: string, queryText: string): Promise<string | null> {
-  if (!queryText.trim()) return null;
-  const vector = await embed(env, queryText);
-  const results = await env.VECTORIZE.query(vector, {
-    topK: RETRIEVAL_TOP_K,
-    returnMetadata: "all",
-    filter: { namespace: NAMESPACE, email: userEmail },
-  });
-  const facts = results.matches
-    .filter((m) => m.score >= RETRIEVAL_MIN_SCORE)
-    .map((m) => (m.metadata as { text?: string } | undefined)?.text)
-    .filter((t): t is string => !!t);
-  if (facts.length === 0) return null;
-  return facts.map((f) => `- ${f}`).join("\n");
+// Read the user's stored facts straight from D1 (reliably partitioned by
+// user_email) and return them all, most-recent first. No embedding or vector
+// query on the read path — that avoids the metadata-filter pitfall entirely
+// and makes recall independent of the current message's phrasing.
+export async function retrieveMemories(env: Env, userEmail: string): Promise<string | null> {
+  const { results } = await env.DB.prepare(
+    "SELECT text FROM memory_facts WHERE user_email = ? ORDER BY created_at DESC LIMIT ?",
+  )
+    .bind(userEmail, MAX_INJECTED_FACTS)
+    .all<{ text: string }>();
+  if (!results.length) return null;
+  return results.map((r) => `- ${r.text}`).join("\n");
 }
 
 export async function ingestExchange(
@@ -100,10 +103,11 @@ Assistant: ${assistantText}`;
   for (const fact of candidates) {
     const vector = await embed(env, fact);
 
+    // Dedup per-user via the indexed `namespace` field set to the user's email.
     const dupCheck = await env.VECTORIZE.query(vector, {
       topK: 1,
       returnMetadata: "none",
-      filter: { namespace: NAMESPACE, email: userEmail },
+      filter: { namespace: userEmail },
     });
     if ((dupCheck.matches[0]?.score ?? 0) >= DEDUP_SCORE_THRESHOLD) {
       continue; // near-duplicate of an existing memory
@@ -113,7 +117,7 @@ Assistant: ${assistantText}`;
     const createdAt = Math.floor(Date.now() / 1000);
 
     await env.VECTORIZE.insert([
-      { id, values: vector, metadata: { namespace: NAMESPACE, email: userEmail, text: fact } },
+      { id, values: vector, metadata: { namespace: userEmail, text: fact } },
     ]);
     await env.DB.prepare(
       "INSERT INTO memory_facts (id, namespace, text, source, created_at, user_email) VALUES (?, ?, ?, ?, ?, ?)",

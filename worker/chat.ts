@@ -8,26 +8,6 @@ interface ChatRequestBody {
   memory?: boolean;
 }
 
-interface ChatMessageShape {
-  role?: string;
-  content?: string | { type?: string; text?: string }[];
-}
-
-function extractLatestUserText(messages: unknown[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i] as ChatMessageShape;
-    if (m?.role !== "user") continue;
-    if (typeof m.content === "string") return m.content;
-    if (Array.isArray(m.content)) {
-      return m.content
-        .filter((part) => part?.type === "text" && part.text)
-        .map((part) => part.text)
-        .join(" ");
-    }
-  }
-  return "";
-}
-
 export async function handleChat(request: Request, env: Env, userEmail: string): Promise<Response> {
   if (!env.MINIMAX_API_KEY) {
     return jsonError("MINIMAX_API_KEY not configured", 500);
@@ -47,10 +27,9 @@ export async function handleChat(request: Request, env: Env, userEmail: string):
   const messages = [...body.messages];
   const memoryEnabled = body.memory !== false;
 
-  const latestUserText = memoryEnabled ? extractLatestUserText(messages) : "";
   const [persona, memoryContext] = await Promise.all([
     getPersona(env, userEmail).catch(() => ""),
-    latestUserText ? retrieveMemories(env, userEmail, latestUserText).catch(() => null) : Promise.resolve(null),
+    memoryEnabled ? retrieveMemories(env, userEmail).catch(() => null) : Promise.resolve(null),
   ]);
 
   const systemPrompt = buildSystemPrompt({ persona, memoryEnabled, memoryContext });
