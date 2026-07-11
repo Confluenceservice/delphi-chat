@@ -24,10 +24,18 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const vadRef = useRef<VadHandle | null>(null);
   const stateRef = useRef<ConvState>("starting");
+  // handleSend gets a new identity on every App render (it re-renders on
+  // every streamed delta) — read the latest via ref so the VAD/mic lifecycle
+  // below only ties to mount/unmount, not to that churn.
+  const onUserUtteranceRef = useRef(onUserUtterance);
 
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    onUserUtteranceRef.current = onUserUtterance;
+  }, [onUserUtterance]);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,7 +51,7 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
           await vadRef.current?.start();
           return;
         }
-        const reply = await onUserUtterance(transcript);
+        const reply = await onUserUtteranceRef.current(transcript);
         if (!reply.trim()) {
           setState("listening");
           await vadRef.current?.start();
@@ -97,7 +105,9 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
       void vadRef.current?.destroy();
       stopPlayback();
     };
-  }, [onUserUtterance]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- VAD lifecycle
+    // is intentionally mount/unmount only; see onUserUtteranceRef above.
+  }, []);
 
   return (
     <div className="conversation-mode">
