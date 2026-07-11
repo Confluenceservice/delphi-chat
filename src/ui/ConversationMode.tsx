@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { VadHandle } from "../audio/vad";
+import { createVad, type VadHandle } from "../audio/vad";
 import { transcribeAudio } from "../api/stt";
 import { synthesizeSpeech } from "../api/tts";
 import { playBlob, onPlaybackEnded, stopPlayback } from "../audio/player";
@@ -19,12 +19,6 @@ const LABELS: Record<ConvState, string> = {
   error: "Something went wrong",
 };
 
-// Manual endpointing: a frame counts as "voice present" above this probability
-// (kept above the ambient-noise floor), and a turn ends after this much
-// continuous silence. Replaces vad-web's unreliable-on-mobile auto-endpointer.
-const VOICE_PRESENT_THRESHOLD = 0.5;
-const SILENCE_TIMEOUT_MS = 1000;
-
 export function ConversationMode({ onUserUtterance, onClose }: Props) {
   const [state, setState] = useState<ConvState>("starting");
   const [error, setError] = useState<string | null>(null);
@@ -32,18 +26,12 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
   const [trace, setTrace] = useState<string>("waiting for speech…");
   const vadRef = useRef<VadHandle | null>(null);
   const stateRef = useRef<ConvState>("starting");
-  // Diagnostic-only: proves whether mic audio is actually reaching the VAD
-  // model at all, vs. reaching it but never crossing the speech threshold.
   const frameCountRef = useRef(0);
   const lastProbRef = useRef(0);
   const misfireCountRef = useRef(0);
-  // Manual endpointing state: are we inside a spoken turn, and when did we
-  // last hear voice above threshold.
-  const speechActiveRef = useRef(false);
-  const lastVoiceTsRef = useRef(0);
-  // handleSend gets a new identity on every App render (it re-renders on
-  // every streamed delta) — read the latest via ref so the VAD/mic lifecycle
-  // below only ties to mount/unmount, not to that churn.
+  // handleSend gets a new identity on every App render (it re-renders on every
+  // streamed delta) — read the latest via ref so the VAD/mic lifecycle below
+  // only ties to mount/unmount, not to that churn.
   const onUserUtteranceRef = useRef(onUserUtterance);
 
   useEffect(() => {
@@ -62,13 +50,13 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
         setTrace(`speechEnd ignored (state=${stateRef.current})`);
         return; // ignore late/duplicate speech-end events
       }
-      await vadRef.current?.pause();
+      await vadRef.current?.pause(); // stop listening while we think + speak (no barge-in)
       setState("thinking");
       try {
         setTrace(`transcribing ${Math.round(wavBlob.size / 1024)}KB…`);
         const transcript = await transcribeAudio(wavBlob, "audio/wav");
         if (!transcript.trim()) {
-          setTrace("transcript was empty → back to listening");
+          setTrace("transcript empty → listening");
           setState("listening");
           await vadRef.current?.start();
           return;
@@ -76,16 +64,15 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
         setTrace(`heard: "${transcript.slice(0, 40)}" → chat…`);
         const reply = await onUserUtteranceRef.current(transcript);
         if (!reply.trim()) {
-          setTrace("chat reply empty → back to listening");
+          setTrace("reply empty → listening");
           setState("listening");
           await vadRef.current?.start();
           return;
         }
-        setTrace("synthesizing speech…");
+        setTrace("speaking reply…");
         setState("speaking");
         const audioBlob = await synthesizeSpeech(reply);
         await playBlob(audioBlob);
-        setTrace("playing reply…");
         // resumed by the onPlaybackEnded listener below
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Something went wrong";
@@ -98,42 +85,19 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
 
     async function init() {
       try {
-        const { createVad } = await import("../audio/vad");
         const vad = await createVad({
-          onSpeechStart: () => {
-            speechActiveRef.current = true;
-            lastVoiceTsRef.current = performance.now();
-            setTrace("speech started…");
-          },
+          onSpeechStart: () => setTrace("speech started…"),
           onSpeechEnd: (wavBlob) => {
-            speechActiveRef.current = false;
-            setTrace(`speechEnd fired (${Math.round(wavBlob.size / 1024)}KB)`);
+            setTrace(`speechEnd (${Math.round(wavBlob.size / 1024)}KB)`);
             void handleUtterance(wavBlob);
           },
           onMisfire: () => {
-            speechActiveRef.current = false;
             misfireCountRef.current += 1;
-            setTrace(`misfire #${misfireCountRef.current} (noise) — ignored`);
+            setTrace(`misfire #${misfireCountRef.current} (too short) — ignored`);
           },
           onFrameProcessed: (prob) => {
             frameCountRef.current += 1;
             lastProbRef.current = prob;
-            const now = performance.now();
-            if (prob >= VOICE_PRESENT_THRESHOLD) {
-              lastVoiceTsRef.current = now;
-            }
-            // Once we're in a turn and have heard nothing but silence for the
-            // timeout, force the endpoint ourselves. pause() flushes the
-            // buffered speech through onSpeechEnd (submitUserSpeechOnPause).
-            if (
-              speechActiveRef.current &&
-              stateRef.current === "listening" &&
-              now - lastVoiceTsRef.current > SILENCE_TIMEOUT_MS
-            ) {
-              speechActiveRef.current = false;
-              setTrace("silence detected → ending turn");
-              void vadRef.current?.pause();
-            }
           },
         });
         if (cancelled) {
@@ -169,8 +133,8 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
       void vadRef.current?.destroy();
       stopPlayback();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- VAD lifecycle
-    // is intentionally mount/unmount only; see onUserUtteranceRef above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- VAD lifecycle is
+    // intentionally mount/unmount only; see onUserUtteranceRef above.
   }, []);
 
   return (
