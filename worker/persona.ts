@@ -20,6 +20,23 @@ export async function setPersona(env: Env, userEmail: string, persona: string): 
     .run();
 }
 
+export async function getVoiceId(env: Env, userEmail: string): Promise<string | null> {
+  const row = await env.DB.prepare("SELECT voice_id FROM user_settings WHERE user_email = ?")
+    .bind(userEmail)
+    .first<{ voice_id: string | null }>();
+  return row?.voice_id ?? null;
+}
+
+export async function setVoiceId(env: Env, userEmail: string, voiceId: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO user_settings (user_email, voice_id, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(user_email) DO UPDATE SET voice_id = excluded.voice_id, updated_at = excluded.updated_at`,
+  )
+    .bind(userEmail, voiceId, Math.floor(Date.now() / 1000))
+    .run();
+}
+
 /**
  * Assemble the single authoritative system prompt for a chat turn: a base
  * identity that makes the model aware it has a persistent long-term memory,

@@ -1,4 +1,5 @@
 import type { Env } from "./types";
+import { getVoiceId } from "./persona";
 
 interface TtsRequestBody {
   text: string;
@@ -9,7 +10,7 @@ interface TtsRequestBody {
 const DEFAULT_TTS_MODEL = "speech-2.6-hd";
 const DEFAULT_VOICE_ID = "English_Graceful_Lady";
 
-export async function handleTts(request: Request, env: Env): Promise<Response> {
+export async function handleTts(request: Request, env: Env, userEmail: string): Promise<Response> {
   if (!env.MINIMAX_API_KEY) {
     return jsonError("MINIMAX_API_KEY not configured", 500);
   }
@@ -24,6 +25,10 @@ export async function handleTts(request: Request, env: Env): Promise<Response> {
   if (!body.text || !body.text.trim()) {
     return jsonError("Body must include non-empty { text }", 400);
   }
+
+  // voice_id in the request (used by the Settings preview) wins; otherwise the
+  // user's saved voice; otherwise the default.
+  const voiceId = body.voice_id ?? (await getVoiceId(env, userEmail).catch(() => null)) ?? DEFAULT_VOICE_ID;
 
   const url = new URL(`${env.MINIMAX_BASE_URL}/v1/t2a_v2`);
   if (env.MINIMAX_GROUP_ID) {
@@ -42,7 +47,7 @@ export async function handleTts(request: Request, env: Env): Promise<Response> {
       stream: false,
       output_format: "hex",
       voice_setting: {
-        voice_id: body.voice_id ?? DEFAULT_VOICE_ID,
+        voice_id: voiceId,
         speed: 1,
         vol: 1,
         pitch: 0,

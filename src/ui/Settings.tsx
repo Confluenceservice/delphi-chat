@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
-import { Trash2, X } from "lucide-react";
+import { Trash2, Volume2, X } from "lucide-react";
 import { clearAllMemories, deleteMemoryFact, listMemories, type MemoryFact } from "../api/memory";
 import { getPersona, savePersona } from "../api/persona";
+import { getVoice, saveVoice } from "../api/voice";
+import { synthesizeSpeech } from "../api/tts";
+import { playBlob } from "../audio/player";
+import { DEFAULT_VOICE_ID, VOICES } from "../data/voices";
 
 const PERSONA_MAX = 2000;
+const VOICE_PREVIEW_TEXT = "Hi! This is how I'll sound when I read replies aloud.";
 
 interface Props {
   open: boolean;
@@ -20,6 +25,8 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose }: Props
   const [persona, setPersona] = useState("");
   const [personaSaved, setPersonaSaved] = useState("");
   const [personaStatus, setPersonaStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [voiceId, setVoiceId] = useState<string>(DEFAULT_VOICE_ID);
+  const [previewing, setPreviewing] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -37,7 +44,31 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose }: Props
         setPersonaSaved(p);
       })
       .catch(() => {});
+    getVoice()
+      .then((v) => setVoiceId(v ?? DEFAULT_VOICE_ID))
+      .catch(() => {});
   }, [open]);
+
+  async function handleVoiceChange(id: string) {
+    setVoiceId(id);
+    try {
+      await saveVoice(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save voice");
+    }
+  }
+
+  async function handlePreviewVoice() {
+    setPreviewing(true);
+    try {
+      const blob = await synthesizeSpeech(VOICE_PREVIEW_TEXT, voiceId);
+      await playBlob(blob);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Preview failed");
+    } finally {
+      setPreviewing(false);
+    }
+  }
 
   async function handleSavePersona() {
     setPersonaStatus("saving");
@@ -113,6 +144,36 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose }: Props
               disabled={personaStatus === "saving" || persona === personaSaved}
             >
               {personaStatus === "saving" ? "Saving…" : personaStatus === "saved" ? "Saved ✓" : "Save"}
+            </button>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-section__title">Voice</div>
+          <div className="settings-toggle__hint">
+            Used for read-aloud and conversation mode.
+          </div>
+          <div className="voice-row">
+            <select
+              className="voice-select"
+              value={voiceId}
+              onChange={(e) => handleVoiceChange(e.target.value)}
+              aria-label="Voice"
+            >
+              {VOICES.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label} ({v.gender})
+                </option>
+              ))}
+            </select>
+            <button
+              className="voice-preview"
+              onClick={handlePreviewVoice}
+              disabled={previewing}
+              aria-label="Preview voice"
+            >
+              <Volume2 size={16} strokeWidth={1.5} />
+              {previewing ? "Playing…" : "Preview"}
             </button>
           </div>
         </div>

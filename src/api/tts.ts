@@ -1,8 +1,8 @@
-export async function synthesizeSpeech(text: string): Promise<Blob> {
+export async function synthesizeSpeech(text: string, voiceId?: string): Promise<Blob> {
   const response = await fetch("/api/tts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(voiceId ? { text, voice_id: voiceId } : { text }),
   });
 
   if (!response.ok) {

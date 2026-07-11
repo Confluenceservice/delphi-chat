@@ -1,9 +1,28 @@
 import type { Env } from "./types";
-import { getPersona, setPersona } from "./persona";
+import { getPersona, getVoiceId, setPersona, setVoiceId } from "./persona";
 
 export async function handlePersonaGet(env: Env, userEmail: string): Promise<Response> {
   const persona = await getPersona(env, userEmail);
   return json({ persona });
+}
+
+export async function handleVoiceGet(env: Env, userEmail: string): Promise<Response> {
+  const voiceId = await getVoiceId(env, userEmail);
+  return json({ voiceId });
+}
+
+export async function handleVoicePut(request: Request, env: Env, userEmail: string): Promise<Response> {
+  let body: { voiceId?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return jsonError("Invalid JSON body", 400);
+  }
+  if (typeof body.voiceId !== "string" || !body.voiceId) {
+    return jsonError("Body must include { voiceId: string }", 400);
+  }
+  await setVoiceId(env, userEmail, body.voiceId);
+  return json({ ok: true });
 }
 
 export async function handlePersonaPut(request: Request, env: Env, userEmail: string): Promise<Response> {

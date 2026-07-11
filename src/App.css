@@ -507,6 +507,37 @@
   opacity: 0.5;
 }
 
+.voice-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.voice-select {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  font-size: 14px;
+}
+
+.voice-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.voice-preview:disabled {
+  opacity: 0.5;
+}
+
 .settings-toggle {
   display: flex;
   align-items: center;
