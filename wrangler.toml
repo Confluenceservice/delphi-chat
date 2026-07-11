@@ -24,3 +24,8 @@ index_name = "minimax-memory"
 binding = "DB"
 database_name = "minimax-chat-memory"
 database_id = "<YOUR_D1_DATABASE_ID>"
+
+[env.production]
+routes = [
+  { pattern = "<YOUR_CUSTOM_DOMAIN>", custom_domain = true }
+]

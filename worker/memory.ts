@@ -63,13 +63,13 @@ function parseFactsJson(text: string): string[] {
   return [];
 }
 
-export async function retrieveMemories(env: Env, queryText: string): Promise<string | null> {
+export async function retrieveMemories(env: Env, userEmail: string, queryText: string): Promise<string | null> {
   if (!queryText.trim()) return null;
   const vector = await embed(env, queryText);
   const results = await env.VECTORIZE.query(vector, {
     topK: RETRIEVAL_TOP_K,
     returnMetadata: "all",
-    filter: { namespace: NAMESPACE },
+    filter: { namespace: NAMESPACE, email: userEmail },
   });
   const facts = results.matches
     .filter((m) => m.score >= RETRIEVAL_MIN_SCORE)
@@ -81,6 +81,7 @@ export async function retrieveMemories(env: Env, queryText: string): Promise<str
 
 export async function ingestExchange(
   env: Env,
+  userEmail: string,
   userText: string,
   assistantText: string,
 ): Promise<{ added: string[] }> {
@@ -102,7 +103,7 @@ Assistant: ${assistantText}`;
     const dupCheck = await env.VECTORIZE.query(vector, {
       topK: 1,
       returnMetadata: "none",
-      filter: { namespace: NAMESPACE },
+      filter: { namespace: NAMESPACE, email: userEmail },
     });
     if ((dupCheck.matches[0]?.score ?? 0) >= DEDUP_SCORE_THRESHOLD) {
       continue; // near-duplicate of an existing memory
@@ -111,11 +112,13 @@ Assistant: ${assistantText}`;
     const id = crypto.randomUUID();
     const createdAt = Math.floor(Date.now() / 1000);
 
-    await env.VECTORIZE.insert([{ id, values: vector, metadata: { namespace: NAMESPACE, text: fact } }]);
+    await env.VECTORIZE.insert([
+      { id, values: vector, metadata: { namespace: NAMESPACE, email: userEmail, text: fact } },
+    ]);
     await env.DB.prepare(
-      "INSERT INTO memory_facts (id, namespace, text, source, created_at) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO memory_facts (id, namespace, text, source, created_at, user_email) VALUES (?, ?, ?, ?, ?, ?)",
     )
-      .bind(id, NAMESPACE, fact, "chat", createdAt)
+      .bind(id, NAMESPACE, fact, "chat", createdAt, userEmail)
       .run();
 
     added.push(fact);
@@ -124,27 +127,33 @@ Assistant: ${assistantText}`;
   return { added };
 }
 
-export async function listMemories(env: Env): Promise<MemoryFactRow[]> {
+export async function listMemories(env: Env, userEmail: string): Promise<MemoryFactRow[]> {
   const { results } = await env.DB.prepare(
-    "SELECT id, namespace, text, source, created_at FROM memory_facts WHERE namespace = ? ORDER BY created_at DESC",
+    "SELECT id, namespace, text, source, created_at FROM memory_facts WHERE namespace = ? AND user_email = ? ORDER BY created_at DESC",
   )
-    .bind(NAMESPACE)
+    .bind(NAMESPACE, userEmail)
     .all<MemoryFactRow>();
   return results;
 }
 
-export async function deleteMemory(env: Env, id: string): Promise<void> {
-  await env.DB.prepare("DELETE FROM memory_facts WHERE id = ? AND namespace = ?").bind(id, NAMESPACE).run();
-  await env.VECTORIZE.deleteByIds([id]);
+export async function deleteMemory(env: Env, userEmail: string, id: string): Promise<void> {
+  const result = await env.DB.prepare("DELETE FROM memory_facts WHERE id = ? AND namespace = ? AND user_email = ?")
+    .bind(id, NAMESPACE, userEmail)
+    .run();
+  if (result.meta.changes > 0) {
+    await env.VECTORIZE.deleteByIds([id]);
+  }
 }
 
-export async function clearMemories(env: Env): Promise<void> {
-  const { results } = await env.DB.prepare("SELECT id FROM memory_facts WHERE namespace = ?")
-    .bind(NAMESPACE)
+export async function clearMemories(env: Env, userEmail: string): Promise<void> {
+  const { results } = await env.DB.prepare("SELECT id FROM memory_facts WHERE namespace = ? AND user_email = ?")
+    .bind(NAMESPACE, userEmail)
     .all<{ id: string }>();
   const ids = results.map((r) => r.id);
   if (ids.length > 0) {
     await env.VECTORIZE.deleteByIds(ids);
   }
-  await env.DB.prepare("DELETE FROM memory_facts WHERE namespace = ?").bind(NAMESPACE).run();
+  await env.DB.prepare("DELETE FROM memory_facts WHERE namespace = ? AND user_email = ?")
+    .bind(NAMESPACE, userEmail)
+    .run();
 }

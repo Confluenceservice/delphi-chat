@@ -10,4 +10,5 @@ export interface Env {
   AI: Ai;
   VECTORIZE: VectorizeIndex;
   DB: D1Database;
+  DEV_USER_EMAIL?: string;
 }

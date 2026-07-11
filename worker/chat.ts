@@ -27,7 +27,7 @@ function extractLatestUserText(messages: unknown[]): string {
   return "";
 }
 
-export async function handleChat(request: Request, env: Env): Promise<Response> {
+export async function handleChat(request: Request, env: Env, userEmail: string): Promise<Response> {
   if (!env.MINIMAX_API_KEY) {
     return jsonError("MINIMAX_API_KEY not configured", 500);
   }
@@ -47,7 +47,7 @@ export async function handleChat(request: Request, env: Env): Promise<Response> 
   const memoryEnabled = body.memory !== false;
   const latestUserText = memoryEnabled ? extractLatestUserText(messages) : "";
   const memoryContext = latestUserText
-    ? await retrieveMemories(env, latestUserText).catch(() => null)
+    ? await retrieveMemories(env, userEmail, latestUserText).catch(() => null)
     : null;
   if (memoryContext) {
     messages.unshift({

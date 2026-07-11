@@ -32,6 +32,11 @@ npx wrangler dev
 Wrangler serves the built SPA and `/api/*` from one process (rebuild after frontend
 changes, or run `npm run build -- --watch` alongside `wrangler dev`).
 
+## Local development auth
+
+CF Access is not available in `wrangler dev`. Set `DEV_USER_EMAIL=you@example.com` in
+`.dev.vars` to simulate an authenticated user.
+
 ## Deploy
 
 ```
