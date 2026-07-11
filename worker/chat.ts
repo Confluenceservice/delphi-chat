@@ -1,5 +1,6 @@
 import type { Env } from "./types";
 import { retrieveMemories } from "./memory";
+import { buildSystemPrompt, getPersona } from "./persona";
 
 interface ChatRequestBody {
   model: string;
@@ -45,16 +46,15 @@ export async function handleChat(request: Request, env: Env, userEmail: string):
 
   const messages = [...body.messages];
   const memoryEnabled = body.memory !== false;
+
   const latestUserText = memoryEnabled ? extractLatestUserText(messages) : "";
-  const memoryContext = latestUserText
-    ? await retrieveMemories(env, userEmail, latestUserText).catch(() => null)
-    : null;
-  if (memoryContext) {
-    messages.unshift({
-      role: "system",
-      content: `Relevant things you remember about the user:\n${memoryContext}`,
-    });
-  }
+  const [persona, memoryContext] = await Promise.all([
+    getPersona(env, userEmail).catch(() => ""),
+    latestUserText ? retrieveMemories(env, userEmail, latestUserText).catch(() => null) : Promise.resolve(null),
+  ]);
+
+  const systemPrompt = buildSystemPrompt({ persona, memoryEnabled, memoryContext });
+  messages.unshift({ role: "system", content: systemPrompt });
 
   const url = new URL(`${env.MINIMAX_BASE_URL}/v1/chat/completions`);
   if (env.MINIMAX_GROUP_ID) {

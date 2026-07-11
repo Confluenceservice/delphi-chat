@@ -470,6 +470,43 @@
   margin-bottom: 10px;
 }
 
+.persona-input {
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  resize: vertical;
+  min-height: 88px;
+  font-size: 14px;
+}
+
+.persona-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.persona-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.persona-save {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 14px;
+}
+
+.persona-save:disabled {
+  opacity: 0.5;
+}
+
 .settings-toggle {
   display: flex;
   align-items: center;

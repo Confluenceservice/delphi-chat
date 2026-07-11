@@ -4,6 +4,7 @@ import { handleChat } from "./chat";
 import { handleTts } from "./tts";
 import { handleStt } from "./stt";
 import { handleMemoryClear, handleMemoryDelete, handleMemoryIngest, handleMemoryList } from "./memory-routes";
+import { handlePersonaGet, handlePersonaPut } from "./persona-routes";
 
 async function logRequest(
   env: Env,
@@ -51,6 +52,14 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
 
     if (url.pathname === "/api/stt" && request.method === "POST") {
       return handleStt(request, env);
+    }
+
+    if (url.pathname === "/api/persona" && request.method === "GET") {
+      return handlePersonaGet(env, userEmail);
+    }
+
+    if (url.pathname === "/api/persona" && request.method === "PUT") {
+      return handlePersonaPut(request, env, userEmail);
     }
 
     if (url.pathname === "/api/memory/ingest" && request.method === "POST") {

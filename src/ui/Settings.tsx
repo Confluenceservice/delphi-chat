@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import { clearAllMemories, deleteMemoryFact, listMemories, type MemoryFact } from "../api/memory";
+import { getPersona, savePersona } from "../api/persona";
+
+const PERSONA_MAX = 2000;
 
 interface Props {
   open: boolean;
@@ -14,17 +17,39 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose }: Props
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [persona, setPersona] = useState("");
+  const [personaSaved, setPersonaSaved] = useState("");
+  const [personaStatus, setPersonaStatus] = useState<"idle" | "saving" | "saved">("idle");
 
   useEffect(() => {
     if (!open) return;
     setConfirmingClear(false);
     setLoading(true);
     setError(null);
+    setPersonaStatus("idle");
     listMemories()
       .then(setFacts)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false));
+    getPersona()
+      .then((p) => {
+        setPersona(p);
+        setPersonaSaved(p);
+      })
+      .catch(() => {});
   }, [open]);
+
+  async function handleSavePersona() {
+    setPersonaStatus("saving");
+    try {
+      await savePersona(persona);
+      setPersonaSaved(persona);
+      setPersonaStatus("saved");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save persona");
+      setPersonaStatus("idle");
+    }
+  }
 
   async function handleDelete(id: string) {
     const prev = facts;
@@ -59,6 +84,37 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose }: Props
           <button className="settings-panel__close" onClick={onClose} aria-label="Close settings">
             <X size={18} strokeWidth={1.5} />
           </button>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-section__title">Persona</div>
+          <div className="settings-toggle__hint">
+            Tell MiniMax how to behave — its tone, role, or style. Applies to every
+            conversation.
+          </div>
+          <textarea
+            className="persona-input"
+            placeholder="e.g. You are a concise, friendly cooking assistant. Prefer metric units."
+            value={persona}
+            maxLength={PERSONA_MAX}
+            onChange={(e) => {
+              setPersona(e.target.value);
+              if (personaStatus === "saved") setPersonaStatus("idle");
+            }}
+            rows={4}
+          />
+          <div className="persona-actions">
+            <span className="persona-count">
+              {persona.length}/{PERSONA_MAX}
+            </span>
+            <button
+              className="persona-save"
+              onClick={handleSavePersona}
+              disabled={personaStatus === "saving" || persona === personaSaved}
+            >
+              {personaStatus === "saving" ? "Saving…" : personaStatus === "saved" ? "Saved ✓" : "Save"}
+            </button>
+          </div>
         </div>
 
         <div className="settings-section">
