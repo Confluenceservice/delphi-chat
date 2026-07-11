@@ -30,8 +30,11 @@ export interface VadCallbacks {
   onSpeechEnd: (wavBlob: Blob) => void;
   /** A detected segment was shorter than MIN_SPEECH_MS and was discarded. */
   onMisfire?: () => void;
-  /** Diagnostic: fires per audio frame (~30/sec) with the speech probability. */
-  onFrameProcessed?: (isSpeechProb: number) => void;
+  /** Something threw while finalizing a segment (e.g. WAV encoding). */
+  onError?: (message: string) => void;
+  /** Diagnostic: fires per audio frame (~30/sec) with the speech probability
+   * and, while in a turn, how long since voice was last heard (ms). */
+  onFrameProcessed?: (isSpeechProb: number, silenceMs: number) => void;
 }
 
 function concatFrames(frames: Float32Array[], totalSamples: number): Float32Array {
@@ -67,7 +70,7 @@ export async function createVad(callbacks: VadCallbacks): Promise<VadHandle> {
     onVADMisfire: () => {},
     onFrameProcessed: (probabilities, frame) => {
       const prob = probabilities.isSpeech;
-      callbacks.onFrameProcessed?.(prob);
+      callbacks.onFrameProcessed?.(prob, inTurn ? now() - lastVoiceTs : 0);
 
       // Always keep a short rolling pre-speech pad so we don't clip word onsets.
       pad.push(frame);
@@ -90,14 +93,18 @@ export async function createVad(callbacks: VadCallbacks): Promise<VadHandle> {
         inTurn = false;
         const frames = segment;
         segment = [];
-        const totalSamples = frames.reduce((n, f) => n + f.length, 0);
-        const durationMs = (totalSamples / SAMPLE_RATE) * 1000;
-        if (durationMs >= MIN_SPEECH_MS) {
-          const audio = concatFrames(frames, totalSamples);
-          const wavBuffer = utils.encodeWAV(audio, undefined, SAMPLE_RATE, 1, 16);
-          callbacks.onSpeechEnd(new Blob([wavBuffer], { type: "audio/wav" }));
-        } else {
-          callbacks.onMisfire?.();
+        try {
+          const totalSamples = frames.reduce((n, f) => n + f.length, 0);
+          const durationMs = (totalSamples / SAMPLE_RATE) * 1000;
+          if (durationMs >= MIN_SPEECH_MS) {
+            const audio = concatFrames(frames, totalSamples);
+            const wavBuffer = utils.encodeWAV(audio, undefined, SAMPLE_RATE, 1, 16);
+            callbacks.onSpeechEnd(new Blob([wavBuffer], { type: "audio/wav" }));
+          } else {
+            callbacks.onMisfire?.();
+          }
+        } catch (err) {
+          callbacks.onError?.(err instanceof Error ? err.message : String(err));
         }
       }
     },

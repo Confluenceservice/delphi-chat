@@ -26,12 +26,13 @@ const LABELS: Record<ConvState, string> = {
 export function ConversationMode({ onUserUtterance, onClose }: Props) {
   const [state, setState] = useState<ConvState>("starting");
   const [error, setError] = useState<string | null>(null);
-  const [debug, setDebug] = useState({ frames: 0, prob: 0 });
+  const [debug, setDebug] = useState({ frames: 0, prob: 0, silence: 0 });
   const [trace, setTrace] = useState<string>("waiting for speech…");
   const vadRef = useRef<VadHandle | null>(null);
   const stateRef = useRef<ConvState>("starting");
   const frameCountRef = useRef(0);
   const lastProbRef = useRef(0);
+  const lastSilenceRef = useRef(0);
   const misfireCountRef = useRef(0);
   // handleSend gets a new identity on every App render (it re-renders on every
   // streamed delta) — read the latest via ref so the VAD/mic lifecycle below
@@ -99,9 +100,11 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
             misfireCountRef.current += 1;
             setTrace(`misfire #${misfireCountRef.current} (too short) — ignored`);
           },
-          onFrameProcessed: (prob) => {
+          onError: (msg) => setTrace(`endpoint error: ${msg}`),
+          onFrameProcessed: (prob, silenceMs) => {
             frameCountRef.current += 1;
             lastProbRef.current = prob;
+            lastSilenceRef.current = silenceMs;
           },
         });
         if (cancelled) {
@@ -127,7 +130,11 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
     });
 
     const debugInterval = setInterval(() => {
-      setDebug({ frames: frameCountRef.current, prob: lastProbRef.current });
+      setDebug({
+        frames: frameCountRef.current,
+        prob: lastProbRef.current,
+        silence: lastSilenceRef.current,
+      });
     }, 300);
 
     return () => {
@@ -146,7 +153,8 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
       <div className={`conversation-mode__orb conversation-mode__orb--${state}`} />
       <div className="conversation-mode__label">{LABELS[state]}</div>
       <div className="conversation-mode__debug">
-        [{BUILD}] frames: {debug.frames} · p(speech): {debug.prob.toFixed(2)}
+        [{BUILD}] frames: {debug.frames} · p: {debug.prob.toFixed(2)} · silence:{" "}
+        {Math.round(debug.silence)}ms
         <br />
         {trace}
       </div>
