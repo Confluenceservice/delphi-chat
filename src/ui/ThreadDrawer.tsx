@@ -1,3 +1,4 @@
+import { Plus, Trash2 } from "lucide-react";
 import type { Thread } from "../state/types";
 
 interface Props {
@@ -16,7 +17,8 @@ export function ThreadDrawer({ open, threads, activeId, onSelect, onNew, onDelet
       <div className={`drawer-backdrop ${open ? "drawer-backdrop--open" : ""}`} onClick={onClose} />
       <aside className={`drawer ${open ? "drawer--open" : ""}`}>
         <button className="drawer__new" onClick={onNew}>
-          + New chat
+          <Plus size={16} strokeWidth={1.5} />
+          New chat
         </button>
         <ul className="drawer__list">
           {threads.map((t) => (
@@ -25,7 +27,7 @@ export function ThreadDrawer({ open, threads, activeId, onSelect, onNew, onDelet
                 {t.title || "New chat"}
               </button>
               <button className="drawer__item-delete" onClick={() => onDelete(t.id)} aria-label="Delete chat">
-                ×
+                <Trash2 size={15} strokeWidth={1.5} />
               </button>
             </li>
           ))}

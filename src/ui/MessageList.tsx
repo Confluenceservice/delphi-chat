@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Square, Volume2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -63,7 +64,11 @@ export function MessageList({ messages, streaming }: Props) {
                 onClick={() => handleSpeak(m)}
                 aria-label={speakingId === m.id ? "Stop speaking" : "Read aloud"}
               >
-                {speakingId === m.id ? "⏹" : "🔊"}
+                {speakingId === m.id ? (
+                  <Square size={14} strokeWidth={1.5} />
+                ) : (
+                  <Volume2 size={14} strokeWidth={1.5} />
+                )}
               </button>
             )}
           </div>

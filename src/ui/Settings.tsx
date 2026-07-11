@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Trash2, X } from "lucide-react";
 import { clearAllMemories, deleteMemoryFact, listMemories, type MemoryFact } from "../api/memory";
 
 interface Props {
@@ -56,7 +57,7 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose }: Props
         <div className="settings-panel__header">
           <span>Settings</span>
           <button className="settings-panel__close" onClick={onClose} aria-label="Close settings">
-            ×
+            <X size={18} strokeWidth={1.5} />
           </button>
         </div>
 
@@ -94,7 +95,7 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose }: Props
                   onClick={() => handleDelete(fact.id)}
                   aria-label="Forget this"
                 >
-                  ×
+                  <Trash2 size={14} strokeWidth={1.5} />
                 </button>
               </li>
             ))}

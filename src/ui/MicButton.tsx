@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Loader2, Mic } from "lucide-react";
 import { startRecording, stopRecording, cancelRecording } from "../audio/recorder";
 import { transcribeAudio } from "../api/stt";
 
@@ -62,7 +63,11 @@ export function MicButton({ disabled, onTranscript }: Props) {
         onPointerCancel={handleEnd}
         aria-label="Hold to talk"
       >
-        {state === "transcribing" ? "…" : "🎙"}
+        {state === "transcribing" ? (
+          <Loader2 size={18} strokeWidth={1.5} className="animate-spin" />
+        ) : (
+          <Mic size={18} strokeWidth={1.5} />
+        )}
       </button>
       {error && <div className="mic-button__error">{error}</div>}
     </div>

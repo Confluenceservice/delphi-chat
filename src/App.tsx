@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Menu, Phone, Settings2, X } from "lucide-react";
 import { streamChat, type ChatMessage } from "./api/chat";
 import { useThreads } from "./state/useThreads";
 import { useSettings } from "./state/useSettings";
@@ -97,7 +98,7 @@ export default function App() {
     <div className="app">
       <header className="app__header">
         <button className="app__menu" onClick={() => setDrawerOpen(true)} aria-label="Open chats">
-          ☰
+          <Menu size={20} strokeWidth={1.5} />
         </button>
         <span className="app__title">MiniMax Chat</span>
         <ModelPicker
@@ -112,14 +113,14 @@ export default function App() {
           }}
           aria-label="Start conversation mode"
         >
-          📞
+          <Phone size={18} strokeWidth={1.5} />
         </button>
         <button
           className="app__settings-toggle"
           onClick={() => setSettingsOpen(true)}
           aria-label="Open settings"
         >
-          ⚙️
+          <Settings2 size={18} strokeWidth={1.5} />
         </button>
       </header>
 
@@ -127,7 +128,7 @@ export default function App() {
         <div className="app__error">
           <span>{error}</span>
           <button className="app__error-dismiss" onClick={() => setError(null)} aria-label="Dismiss">
-            ×
+            <X size={16} strokeWidth={1.5} />
           </button>
         </div>
       )}

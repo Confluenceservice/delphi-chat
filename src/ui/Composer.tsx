@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import type { ChangeEvent, KeyboardEvent } from "react";
+import { Paperclip, Send, X } from "lucide-react";
 import { MicButton } from "./MicButton";
 
 interface Props {
@@ -73,7 +74,7 @@ export function Composer({ disabled, onSend }: Props) {
                 onClick={() => removeImage(i)}
                 aria-label="Remove image"
               >
-                ×
+                <X size={14} strokeWidth={1.5} />
               </button>
             </div>
           ))}
@@ -95,7 +96,7 @@ export function Composer({ disabled, onSend }: Props) {
           disabled={disabled}
           aria-label="Attach image"
         >
-          📎
+          <Paperclip size={18} strokeWidth={1.5} />
         </button>
         <textarea
           ref={textareaRef}
@@ -113,7 +114,7 @@ export function Composer({ disabled, onSend }: Props) {
           disabled={disabled || (!value.trim() && images.length === 0)}
           aria-label="Send message"
         >
-          ↑
+          <Send size={18} strokeWidth={1.5} />
         </button>
       </div>
     </div>
