@@ -13,7 +13,7 @@ interface Props {
 
 // Bump on every conversation-mode deploy so we can confirm on-device that the
 // latest code is actually running (vs. a stale service-worker-cached shell).
-const BUILD = "vad6";
+const BUILD = __BUILD__;
 
 const LABELS: Record<ConvState, string> = {
   starting: "Starting…",

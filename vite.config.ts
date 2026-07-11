@@ -2,14 +2,25 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+// Short build id stamped into the bundle so the running build is identifiable
+// on-device (see the conversation-mode debug line). Node build-time only.
+const BUILD_ID = Date.now().toString(36);
+
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __BUILD__: JSON.stringify(BUILD_ID),
+  },
   plugins: [
     react(),
     VitePWA({
+      // TEMPORARY during conversation-mode debugging: a self-destroying service
+      // worker unregisters any previously-installed SW and clears its caches,
+      // so iOS Safari stops serving stale app shells (which produced repeated
+      // stale-chunk 404s and made it impossible to tell which build was live).
+      // Re-enable real precaching once conversation mode is verified on device.
+      selfDestroying: true,
       registerType: "autoUpdate",
-      // API calls (chat/tts/stt) and the CDN-hosted VAD/ONNX assets must
-      // never be served from a stale cache — leave them to the network.
       workbox: {
         navigateFallbackDenylist: [/^\/api\//],
       },
