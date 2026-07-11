@@ -8,7 +8,7 @@ interface TtsRequestBody {
 }
 
 const DEFAULT_TTS_MODEL = "speech-2.6-hd";
-const DEFAULT_VOICE_ID = "English_Graceful_Lady";
+const DEFAULT_VOICE_ID = "English_ManWithDeepVoice";
 
 export async function handleTts(request: Request, env: Env, userEmail: string): Promise<Response> {
   if (!env.MINIMAX_API_KEY) {

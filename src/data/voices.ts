@@ -30,4 +30,4 @@ export const VOICES: Voice[] = [
   { id: "English_Comedian", label: "Comedian", gender: "neutral" },
 ];
 
-export const DEFAULT_VOICE_ID = "English_Graceful_Lady";
+export const DEFAULT_VOICE_ID = "English_ManWithDeepVoice";
