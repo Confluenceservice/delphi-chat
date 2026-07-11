@@ -30,6 +30,7 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
   // model at all, vs. reaching it but never crossing the speech threshold.
   const frameCountRef = useRef(0);
   const lastProbRef = useRef(0);
+  const misfireCountRef = useRef(0);
   // handleSend gets a new identity on every App render (it re-renders on
   // every streamed delta) — read the latest via ref so the VAD/mic lifecycle
   // below only ties to mount/unmount, not to that churn.
@@ -93,6 +94,10 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
           onSpeechEnd: (wavBlob) => {
             setTrace(`speechEnd fired (${Math.round(wavBlob.size / 1024)}KB)`);
             void handleUtterance(wavBlob);
+          },
+          onMisfire: () => {
+            misfireCountRef.current += 1;
+            setTrace(`misfire #${misfireCountRef.current} (segment too short) — talk longer`);
           },
           onFrameProcessed: (prob) => {
             frameCountRef.current += 1;

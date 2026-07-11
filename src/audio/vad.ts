@@ -15,6 +15,9 @@ export interface VadHandle {
 export interface VadCallbacks {
   onSpeechStart: () => void;
   onSpeechEnd: (wavBlob: Blob) => void;
+  /** Fires when a detected speech segment was too short (< minSpeechMs) and
+   * was discarded instead of producing onSpeechEnd. */
+  onMisfire?: () => void;
   /** Diagnostic: fires per audio frame (~30/sec) so callers can confirm
    * mic audio is actually reaching the VAD model, not just that init succeeded. */
   onFrameProcessed?: (isSpeechProb: number) => void;
@@ -38,6 +41,7 @@ export async function createVad(callbacks: VadCallbacks): Promise<VadHandle> {
       const wavBuffer = utils.encodeWAV(audio, undefined, 16000, 1, 16);
       callbacks.onSpeechEnd(new Blob([wavBuffer], { type: "audio/wav" }));
     },
+    onVADMisfire: () => callbacks.onMisfire?.(),
     onFrameProcessed: (probabilities) => {
       callbacks.onFrameProcessed?.(probabilities.isSpeech);
     },
