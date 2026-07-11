@@ -11,4 +11,7 @@ export interface Env {
   VECTORIZE: VectorizeIndex;
   DB: D1Database;
   DEV_USER_EMAIL?: string;
+  ADMIN_EMAILS?: string;
+  CF_ACCESS_TEAM_DOMAIN?: string;
+  CF_ACCESS_AUD?: string;
 }

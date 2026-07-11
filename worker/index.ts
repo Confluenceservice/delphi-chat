@@ -32,7 +32,18 @@ async function logRequest(
   }
 }
 
-async function handleAuditList(env: Env): Promise<Response> {
+function isAdmin(userEmail: string, env: Env): boolean {
+  const admins = (env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return admins.includes(userEmail.toLowerCase());
+}
+
+async function handleAuditList(env: Env, userEmail: string): Promise<Response> {
+  if (!isAdmin(userEmail, env)) {
+    return new Response("Forbidden", { status: 403 });
+  }
   const { results } = await env.DB.prepare("SELECT * FROM audit_log ORDER BY ts DESC LIMIT 100").all();
   return new Response(JSON.stringify({ entries: results }), {
     status: 200,
@@ -42,7 +53,7 @@ async function handleAuditList(env: Env): Promise<Response> {
 
 async function route(request: Request, env: Env, url: URL): Promise<Response> {
   if (url.pathname.startsWith("/api/")) {
-    const userEmail = resolveUserEmail(request, env);
+    const userEmail = await resolveUserEmail(request, env);
     if (!userEmail) {
       return new Response("Unauthorized", { status: 401 });
     }
@@ -88,7 +99,7 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
     }
 
     if (url.pathname === "/api/admin/audit" && request.method === "GET") {
-      return handleAuditList(env);
+      return handleAuditList(env, userEmail);
     }
 
     const memoryIdMatch = url.pathname.match(/^\/api\/memory\/([^/]+)$/);
@@ -104,7 +115,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const start = Date.now();
-    const userEmail = resolveUserEmail(request, env);
+    const userEmail = await resolveUserEmail(request, env);
     let status = 500;
     let errorMessage: string | undefined;
 

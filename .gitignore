@@ -8,3 +8,4 @@ dist-ssr
 .DS_Store
 *.log
 .dev.vars
+.gstack

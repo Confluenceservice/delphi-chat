@@ -1,6 +1,7 @@
 name = "minimax-chat"
 main = "worker/index.ts"
 compatibility_date = "2026-07-01"
+workers_dev = false
 
 routes = [
   { pattern = "<YOUR_CUSTOM_DOMAIN>", custom_domain = true }
