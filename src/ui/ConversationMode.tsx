@@ -22,8 +22,13 @@ const LABELS: Record<ConvState, string> = {
 export function ConversationMode({ onUserUtterance, onClose }: Props) {
   const [state, setState] = useState<ConvState>("starting");
   const [error, setError] = useState<string | null>(null);
+  const [debug, setDebug] = useState({ frames: 0, prob: 0 });
   const vadRef = useRef<VadHandle | null>(null);
   const stateRef = useRef<ConvState>("starting");
+  // Diagnostic-only: proves whether mic audio is actually reaching the VAD
+  // model at all, vs. reaching it but never crossing the speech threshold.
+  const frameCountRef = useRef(0);
+  const lastProbRef = useRef(0);
   // handleSend gets a new identity on every App render (it re-renders on
   // every streamed delta) — read the latest via ref so the VAD/mic lifecycle
   // below only ties to mount/unmount, not to that churn.
@@ -76,6 +81,10 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
           onSpeechEnd: (wavBlob) => {
             void handleUtterance(wavBlob);
           },
+          onFrameProcessed: (prob) => {
+            frameCountRef.current += 1;
+            lastProbRef.current = prob;
+          },
         });
         if (cancelled) {
           await vad.destroy();
@@ -99,9 +108,14 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
       }
     });
 
+    const debugInterval = setInterval(() => {
+      setDebug({ frames: frameCountRef.current, prob: lastProbRef.current });
+    }, 300);
+
     return () => {
       cancelled = true;
       unsubscribe();
+      clearInterval(debugInterval);
       void vadRef.current?.destroy();
       stopPlayback();
     };
@@ -113,6 +127,9 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
     <div className="conversation-mode">
       <div className={`conversation-mode__orb conversation-mode__orb--${state}`} />
       <div className="conversation-mode__label">{LABELS[state]}</div>
+      <div className="conversation-mode__debug">
+        frames: {debug.frames} · p(speech): {debug.prob.toFixed(2)}
+      </div>
       {error && <div className="conversation-mode__error">{error}</div>}
       <button className="conversation-mode__stop" onClick={onClose}>
         Stop

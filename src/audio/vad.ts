@@ -15,6 +15,9 @@ export interface VadHandle {
 export interface VadCallbacks {
   onSpeechStart: () => void;
   onSpeechEnd: (wavBlob: Blob) => void;
+  /** Diagnostic: fires per audio frame (~30/sec) so callers can confirm
+   * mic audio is actually reaching the VAD model, not just that init succeeded. */
+  onFrameProcessed?: (isSpeechProb: number) => void;
 }
 
 // Throws if mic permission is denied or the VAD assets fail to load —
@@ -34,6 +37,9 @@ export async function createVad(callbacks: VadCallbacks): Promise<VadHandle> {
     onSpeechEnd: (audio) => {
       const wavBuffer = utils.encodeWAV(audio, undefined, 16000, 1, 16);
       callbacks.onSpeechEnd(new Blob([wavBuffer], { type: "audio/wav" }));
+    },
+    onFrameProcessed: (probabilities) => {
+      callbacks.onFrameProcessed?.(probabilities.isSpeech);
     },
   });
 

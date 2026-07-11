@@ -386,6 +386,13 @@
   color: var(--text-muted);
 }
 
+.conversation-mode__debug {
+  font-size: 12px;
+  font-family: ui-monospace, Consolas, monospace;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
 .conversation-mode__error {
   color: var(--danger);
   font-size: 14px;
