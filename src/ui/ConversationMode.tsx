@@ -11,6 +11,10 @@ interface Props {
   onClose: () => void;
 }
 
+// Bump on every conversation-mode deploy so we can confirm on-device that the
+// latest code is actually running (vs. a stale service-worker-cached shell).
+const BUILD = "vad6";
+
 const LABELS: Record<ConvState, string> = {
   starting: "Starting…",
   listening: "Listening…",
@@ -142,7 +146,7 @@ export function ConversationMode({ onUserUtterance, onClose }: Props) {
       <div className={`conversation-mode__orb conversation-mode__orb--${state}`} />
       <div className="conversation-mode__label">{LABELS[state]}</div>
       <div className="conversation-mode__debug">
-        frames: {debug.frames} · p(speech): {debug.prob.toFixed(2)}
+        [{BUILD}] frames: {debug.frames} · p(speech): {debug.prob.toFixed(2)}
         <br />
         {trace}
       </div>
