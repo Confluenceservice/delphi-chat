@@ -3,11 +3,10 @@ import { Menu, Phone, Settings2, X } from "lucide-react";
 import { streamChat, type ChatMessage } from "./api/chat";
 import { useThreads } from "./state/useThreads";
 import { useSettings } from "./state/useSettings";
-import { DEFAULT_MODEL, type Message } from "./state/types";
+import { type Message } from "./state/types";
 import { stripThinking } from "./lib/thinking";
 import { MessageList } from "./ui/MessageList";
 import { Composer } from "./ui/Composer";
-import { ModelPicker } from "./ui/ModelPicker";
 import { ThreadDrawer } from "./ui/ThreadDrawer";
 import { ConversationMode } from "./ui/ConversationMode";
 import { Settings } from "./ui/Settings";
@@ -36,7 +35,6 @@ export default function App() {
     createThread,
     selectThread,
     deleteThread,
-    setThreadModel,
     appendMessage,
     updateMessage,
     newId,
@@ -100,11 +98,7 @@ export default function App() {
         <button className="app__menu" onClick={() => setDrawerOpen(true)} aria-label="Open chats">
           <Menu size={20} strokeWidth={1.5} />
         </button>
-        <span className="app__title">MiniMax Chat</span>
-        <ModelPicker
-          value={thread?.model ?? DEFAULT_MODEL}
-          onChange={(model) => thread && setThreadModel(thread.id, model)}
-        />
+        <span className="app__title">Dephi Chat</span>
         <button
           className="app__conversation-toggle"
           onClick={() => {
