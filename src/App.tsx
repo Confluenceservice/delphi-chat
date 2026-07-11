@@ -98,7 +98,7 @@ export default function App() {
         <button className="app__menu" onClick={() => setDrawerOpen(true)} aria-label="Open chats">
           <Menu size={20} strokeWidth={1.5} />
         </button>
-        <span className="app__title">Dephi Chat</span>
+        <span className="app__title">Delphi Chat</span>
         <button
           className="app__conversation-toggle"
           onClick={() => {

@@ -25,8 +25,8 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
       },
       manifest: {
-        name: "MiniMax Chat",
-        short_name: "MiniMax",
+        name: "Delphi Chat",
+        short_name: "Delphi",
         description: "Mobile-friendly chat app powered by the MiniMax model family",
         theme_color: "#aa3bff",
         background_color: "#ffffff",
