@@ -1,3 +1,5 @@
+import { apiFetch } from "./http";
+
 export type ChatContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } };
@@ -28,7 +30,7 @@ export async function streamChat({
 }: StreamChatParams): Promise<void> {
   let response: Response;
   try {
-    response = await fetch("/api/chat", {
+    response = await apiFetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model, messages, memory }),

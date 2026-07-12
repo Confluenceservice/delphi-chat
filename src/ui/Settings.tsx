@@ -6,6 +6,8 @@ import { getVoice, saveVoice } from "../api/voice";
 import { synthesizeSpeech } from "../api/tts";
 import { playBlob } from "../audio/player";
 import { DEFAULT_VOICE_ID, VOICES } from "../data/voices";
+import { logout } from "../lib/auth";
+import { clearCacheAndReload } from "../lib/cache";
 
 const PERSONA_MAX = 2000;
 const VOICE_PREVIEW_TEXT = "Hi! This is how I'll sound when I read replies aloud.";
@@ -234,6 +236,18 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose }: Props
                 Clear all memory
               </button>
             ))}
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-section__title">Account</div>
+          <div className="settings-account-actions">
+            <button className="settings-account-action" onClick={() => void clearCacheAndReload()}>
+              Clear cache &amp; reload
+            </button>
+            <button className="settings-account-action settings-account-action--danger" onClick={logout}>
+              Log out
+            </button>
+          </div>
         </div>
       </div>
     </div>

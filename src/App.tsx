@@ -10,6 +10,7 @@ import { Composer } from "./ui/Composer";
 import { ThreadDrawer } from "./ui/ThreadDrawer";
 import { ConversationMode } from "./ui/ConversationMode";
 import { Settings } from "./ui/Settings";
+import { ConnectionBanner } from "./ui/ConnectionBanner";
 import { unlockAudio } from "./audio/player";
 import { ingestMemory } from "./api/memory";
 import "./App.css";
@@ -117,6 +118,8 @@ export default function App() {
           <Settings2 size={18} strokeWidth={1.5} />
         </button>
       </header>
+
+      <ConnectionBanner />
 
       {error && (
         <div className="app__error">
