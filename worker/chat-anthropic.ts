@@ -73,8 +73,27 @@ export function anthropicToAppSSE(
       return;
     }
     if (type === "error") {
+      if (inThink) {
+        controller.enqueue(contentChunk("</think>"));
+        inThink = false;
+      }
       const msg = json.error?.message ?? "web search stream error";
       controller.enqueue(contentChunk(`\n\n⚠️ ${msg}`));
+    }
+  }
+
+  function processLine(
+    line: string,
+    controller: ReadableStreamDefaultController<Uint8Array>,
+  ): void {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) return; // skip "event:" and blanks
+    const data = trimmed.slice(5).trim();
+    if (!data || data === "[DONE]") return;
+    try {
+      handleEvent(JSON.parse(data), controller);
+    } catch {
+      // ignore malformed chunk
     }
   }
 
@@ -93,8 +112,10 @@ export function anthropicToAppSSE(
     async pull(controller) {
       const { done, value } = await reader.read();
       if (done) {
-        // Flush any trailing buffered line, then finish.
+        // Process any trailing buffered line (stream may end without a
+        // final "\n\n"), then finish.
         buffer += DECODER.decode();
+        if (buffer) processLine(buffer, controller);
         finish(controller);
         controller.close();
         return;
@@ -103,15 +124,7 @@ export function anthropicToAppSSE(
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
       for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("data:")) continue; // skip "event:" and blanks
-        const data = trimmed.slice(5).trim();
-        if (!data || data === "[DONE]") continue;
-        try {
-          handleEvent(JSON.parse(data), controller);
-        } catch {
-          // ignore malformed chunk
-        }
+        processLine(line, controller);
       }
     },
     cancel() {
