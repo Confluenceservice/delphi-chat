@@ -38,6 +38,7 @@ export default function App() {
     deleteThread,
     appendMessage,
     updateMessage,
+    setMessageSources,
     newId,
   } = useThreads();
   const { memoryEnabled, setMemoryEnabled } = useSettings();
@@ -77,6 +78,7 @@ export default function App() {
         finalText = stripThinking(rawText);
         updateMessage(t.id, assistantId, finalText);
       },
+      onSources: (sources) => setMessageSources(t.id, assistantId, sources),
       onDone: () => setStreaming(false),
       onError: (message) => {
         setStreaming(false);
@@ -86,7 +88,7 @@ export default function App() {
       },
     });
 
-    if (memoryEnabled && finalText.trim()) {
+    if (memoryEnabled && finalText.trim() && !finalText.includes("⚠️")) {
       ingestMemory(text, finalText);
     }
 

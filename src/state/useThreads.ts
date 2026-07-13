@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { loadActiveThreadId, loadThreads, saveActiveThreadId, saveThreads } from "./storage";
-import { DEFAULT_MODEL, type Message, type Thread } from "./types";
+import { DEFAULT_MODEL, type Message, type Source, type Thread } from "./types";
 
 function newId(): string {
   return crypto.randomUUID();
@@ -75,6 +75,23 @@ export function useThreads() {
     );
   }, []);
 
+  const setMessageSources = useCallback(
+    (threadId: string, messageId: string, sources: Source[]) => {
+      setThreads((prev) =>
+        prev.map((t) => {
+          if (t.id !== threadId) return t;
+          return {
+            ...t,
+            messages: t.messages.map((m) =>
+              m.id === messageId ? { ...m, sources } : m,
+            ),
+          };
+        }),
+      );
+    },
+    [],
+  );
+
   return {
     threads,
     activeThread,
@@ -85,6 +102,7 @@ export function useThreads() {
     setThreadModel,
     appendMessage,
     updateMessage,
+    setMessageSources,
     newId,
   };
 }

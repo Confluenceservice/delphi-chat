@@ -1,6 +1,7 @@
 import type { Env } from "./types";
 import { retrieveMemories } from "./memory";
 import { buildSystemPrompt, getPersona } from "./persona";
+import { handleChatWithSearch } from "./chat-anthropic";
 
 interface ChatRequestBody {
   model: string;
@@ -33,6 +34,13 @@ export async function handleChat(request: Request, env: Env, userEmail: string):
   ]);
 
   const systemPrompt = buildSystemPrompt({ persona, memoryEnabled, memoryContext });
+
+  // Text-only turns get web search via the Anthropic endpoint. Image turns fall
+  // back to the OpenAI-compatible passthrough (vision + web_search unconfirmed).
+  if (!hasImageContent(messages)) {
+    return handleChatWithSearch(env, body.model, systemPrompt, messages);
+  }
+
   messages.unshift({ role: "system", content: systemPrompt });
 
   const url = new URL(`${env.MINIMAX_BASE_URL}/v1/chat/completions`);
@@ -79,5 +87,15 @@ function jsonError(message: string, status: number): Response {
   return new Response(JSON.stringify({ error: message }), {
     status,
     headers: { "Content-Type": "application/json" },
+  });
+}
+
+function hasImageContent(messages: unknown[]): boolean {
+  return messages.some((m) => {
+    const content = (m as { content?: unknown })?.content;
+    return (
+      Array.isArray(content) &&
+      content.some((part) => (part as { type?: string })?.type === "image_url")
+    );
   });
 }

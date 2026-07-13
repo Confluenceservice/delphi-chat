@@ -333,6 +333,40 @@
   object-fit: cover;
 }
 
+.message__sources {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.8rem;
+}
+
+.message__sources-label {
+  display: block;
+  margin-bottom: 0.25rem;
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+}
+
+.message__sources ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.message__sources li {
+  margin: 0.15rem 0;
+}
+
+.message__sources a {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.message__sources a:hover {
+  opacity: 1;
+}
+
 .message__speak {
   display: inline-flex;
   align-items: center;

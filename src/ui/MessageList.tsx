@@ -58,6 +58,20 @@ export function MessageList({ messages, streaming }: Props) {
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
               {m.content || (streaming && m.role === "assistant" ? "…" : "")}
             </ReactMarkdown>
+            {m.role === "assistant" && m.sources && m.sources.length > 0 && (
+              <div className="message__sources">
+                <span className="message__sources-label">Sources</span>
+                <ul>
+                  {m.sources.map((s) => (
+                    <li key={s.url}>
+                      <a href={s.url} target="_blank" rel="noopener noreferrer">
+                        {s.title || s.url}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {m.role === "assistant" && m.content && (
               <button
                 className="message__speak"

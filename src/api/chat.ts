@@ -14,6 +14,7 @@ export interface StreamChatParams {
   messages: ChatMessage[];
   memory: boolean;
   onDelta: (text: string) => void;
+  onSources?: (sources: { title: string; url: string }[]) => void;
   onDone: () => void;
   onError: (message: string) => void;
   signal?: AbortSignal;
@@ -24,6 +25,7 @@ export async function streamChat({
   messages,
   memory,
   onDelta,
+  onSources,
   onDone,
   onError,
   signal,
@@ -75,6 +77,10 @@ export async function streamChat({
         }
         try {
           const parsed = JSON.parse(data);
+          if (Array.isArray(parsed.sources)) {
+            onSources?.(parsed.sources);
+            continue;
+          }
           const delta: string | undefined = parsed.choices?.[0]?.delta?.content;
           if (delta) onDelta(delta);
         } catch {
