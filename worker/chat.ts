@@ -33,11 +33,13 @@ export async function handleChat(request: Request, env: Env, userEmail: string):
     memoryEnabled ? retrieveMemories(env, userEmail).catch(() => null) : Promise.resolve(null),
   ]);
 
-  const systemPrompt = buildSystemPrompt({ persona, memoryEnabled, memoryContext });
-
   // Text-only turns get web search via the Anthropic endpoint. Image turns fall
-  // back to the OpenAI-compatible passthrough (vision + web_search unconfirmed).
-  if (!hasImageContent(messages)) {
+  // back to the OpenAI-compatible passthrough (vision + web_search unconfirmed),
+  // so only text turns advertise the search capability in the system prompt.
+  const webSearch = !hasImageContent(messages);
+  const systemPrompt = buildSystemPrompt({ persona, memoryEnabled, memoryContext, webSearch });
+
+  if (webSearch) {
     return handleChatWithSearch(env, body.model, systemPrompt, messages);
   }
 

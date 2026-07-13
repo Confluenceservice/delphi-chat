@@ -47,8 +47,18 @@ export function buildSystemPrompt(opts: {
   persona: string;
   memoryEnabled: boolean;
   memoryContext: string | null;
+  webSearch: boolean;
 }): string {
   const parts: string[] = [];
+
+  if (opts.webSearch) {
+    parts.push(
+      "You can search the web for current information. Use it whenever a question " +
+        "involves recent events, current facts, prices, schedules, or anything " +
+        "time-sensitive or that you are unsure about, and cite the sources you find. " +
+        "Never claim you cannot access the internet.",
+    );
+  }
 
   if (opts.memoryEnabled) {
     parts.push(
