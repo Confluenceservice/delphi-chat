@@ -26,7 +26,6 @@ function contentChunk(text: string): Uint8Array {
 export function anthropicToAppSSE(
   upstream: ReadableStream<Uint8Array>,
 ): ReadableStream<Uint8Array> {
-  const reader = upstream.getReader();
   let buffer = "";
   let inThink = false;
   const sources: AnthropicSource[] = [];
@@ -44,7 +43,7 @@ export function anthropicToAppSSE(
 
   function handleEvent(
     json: any,
-    controller: ReadableStreamDefaultController<Uint8Array>,
+    controller: TransformStreamDefaultController<Uint8Array>,
   ): void {
     const type = json?.type;
     if (type === "content_block_start") {
@@ -84,7 +83,7 @@ export function anthropicToAppSSE(
 
   function processLine(
     line: string,
-    controller: ReadableStreamDefaultController<Uint8Array>,
+    controller: TransformStreamDefaultController<Uint8Array>,
   ): void {
     const trimmed = line.trim();
     if (!trimmed.startsWith("data:")) return; // skip "event:" and blanks
@@ -97,7 +96,7 @@ export function anthropicToAppSSE(
     }
   }
 
-  function finish(controller: ReadableStreamDefaultController<Uint8Array>): void {
+  function finish(controller: TransformStreamDefaultController<Uint8Array>): void {
     if (inThink) {
       controller.enqueue(contentChunk("</think>"));
       inThink = false;
@@ -108,29 +107,29 @@ export function anthropicToAppSSE(
     controller.enqueue(ENCODER.encode("data: [DONE]\n\n"));
   }
 
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      const { done, value } = await reader.read();
-      if (done) {
-        // Process any trailing buffered line (stream may end without a
-        // final "\n\n"), then finish.
-        buffer += DECODER.decode();
-        if (buffer) processLine(buffer, controller);
-        finish(controller);
-        controller.close();
-        return;
-      }
-      buffer += DECODER.decode(value, { stream: true });
+  // Pipe the upstream body through a TransformStream so the Workers runtime
+  // pumps the stream inside its I/O context. A manual pull-based ReadableStream
+  // that awaits reader.read() during the server-side search pause trips the
+  // runtime's hang detector and the request is canceled mid-stream.
+  const transform = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      buffer += DECODER.decode(chunk, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
       for (const line of lines) {
         processLine(line, controller);
       }
     },
-    cancel() {
-      reader.cancel().catch(() => {});
+    flush(controller) {
+      // Process any trailing buffered line (stream may end without a
+      // final "\n\n"), then emit sources + [DONE].
+      buffer += DECODER.decode();
+      if (buffer) processLine(buffer, controller);
+      finish(controller);
     },
   });
+
+  return upstream.pipeThrough(transform);
 }
 
 export async function handleChatWithSearch(
