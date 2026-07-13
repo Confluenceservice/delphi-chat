@@ -88,7 +88,7 @@ export default function App() {
       },
     });
 
-    if (memoryEnabled && finalText.trim()) {
+    if (memoryEnabled && finalText.trim() && !finalText.includes("⚠️")) {
       ingestMemory(text, finalText);
     }
 
