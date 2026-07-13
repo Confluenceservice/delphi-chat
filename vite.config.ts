@@ -22,7 +22,7 @@ export default defineConfig({
       selfDestroying: true,
       registerType: "autoUpdate",
       workbox: {
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/cdn-cgi\//],
       },
       manifest: {
         name: "Delphi Chat",
