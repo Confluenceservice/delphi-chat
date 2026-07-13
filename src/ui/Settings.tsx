@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 import { Trash2, Volume2, X } from "lucide-react";
 import { clearAllMemories, deleteMemoryFact, listMemories, type MemoryFact } from "../api/memory";
 import { getPersona, savePersona } from "../api/persona";
@@ -8,6 +9,7 @@ import { playBlob } from "../audio/player";
 import { DEFAULT_VOICE_ID, VOICES } from "../data/voices";
 import { logout } from "../lib/auth";
 import { clearCacheAndReload } from "../lib/cache";
+import type { Thread } from "../state/types";
 
 const PERSONA_MAX = 2000;
 const VOICE_PREVIEW_TEXT = "Hi! This is how I'll sound when I read replies aloud.";
@@ -17,9 +19,11 @@ interface Props {
   memoryEnabled: boolean;
   onToggleMemory: (value: boolean) => void;
   onClose: () => void;
+  threads: Thread[];
+  onImportThreads: (threads: Thread[]) => void;
 }
 
-export function Settings({ open, memoryEnabled, onToggleMemory, onClose }: Props) {
+export function Settings({ open, memoryEnabled, onToggleMemory, onClose, threads, onImportThreads }: Props) {
   const [facts, setFacts] = useState<MemoryFact[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +33,7 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose }: Props
   const [personaStatus, setPersonaStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [voiceId, setVoiceId] = useState<string>(DEFAULT_VOICE_ID);
   const [previewing, setPreviewing] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -104,6 +109,29 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose }: Props
     } catch (err) {
       setFacts(prev);
       setError(err instanceof Error ? err.message : "Failed to clear");
+    }
+  }
+
+  function handleExport() {
+    const blob = new Blob([JSON.stringify(threads, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `delphi-chat-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImportFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      if (!Array.isArray(parsed)) throw new Error("Not a valid export file");
+      onImportThreads(parsed as Thread[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Import failed");
     }
   }
 
@@ -236,6 +264,25 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose }: Props
                 Clear all memory
               </button>
             ))}
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-section__title">Conversations</div>
+          <div className="settings-account-actions">
+            <button className="settings-account-action" onClick={handleExport}>
+              Export chats
+            </button>
+            <button className="settings-account-action" onClick={() => importInputRef.current?.click()}>
+              Import chats
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json"
+              hidden
+              onChange={handleImportFile}
+            />
+          </div>
         </div>
 
         <div className="settings-section">

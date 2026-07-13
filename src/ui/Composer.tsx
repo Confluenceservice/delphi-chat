@@ -1,11 +1,21 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, KeyboardEvent } from "react";
-import { Paperclip, Send, X } from "lucide-react";
+import { Paperclip, Send, Square, X } from "lucide-react";
 import { MicButton } from "./MicButton";
+
+interface EditDraft {
+  id: string;
+  text: string;
+  images?: string[];
+}
 
 interface Props {
   disabled: boolean;
   onSend: (text: string, images?: string[]) => void;
+  streaming?: boolean;
+  onStop?: () => void;
+  editDraft?: EditDraft | null;
+  onCancelEdit?: () => void;
 }
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // MiniMax vision limit
@@ -19,12 +29,25 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-export function Composer({ disabled, onSend }: Props) {
+export function Composer({ disabled, onSend, streaming, onStop, editDraft, onCancelEdit }: Props) {
   const [value, setValue] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editDraft) return;
+    setValue(editDraft.text);
+    setImages(editDraft.images ?? []);
+    textareaRef.current?.focus();
+  }, [editDraft]);
+
+  function cancelEdit() {
+    onCancelEdit?.();
+    setValue("");
+    setImages([]);
+  }
 
   function submit() {
     const text = value.trim();
@@ -80,6 +103,14 @@ export function Composer({ disabled, onSend }: Props) {
           ))}
         </div>
       )}
+      {editDraft && (
+        <div className="composer__editing">
+          <span>Editing message</span>
+          <button className="composer__editing-cancel" onClick={cancelEdit} aria-label="Cancel edit">
+            <X size={14} strokeWidth={1.5} />
+          </button>
+        </div>
+      )}
       {imageError && <div className="composer__error">{imageError}</div>}
       <div className="composer__row">
         <input
@@ -108,14 +139,20 @@ export function Composer({ disabled, onSend }: Props) {
           rows={1}
         />
         <MicButton disabled={disabled} onTranscript={(text) => onSend(text)} />
-        <button
-          className="composer__send"
-          onClick={submit}
-          disabled={disabled || (!value.trim() && images.length === 0)}
-          aria-label="Send message"
-        >
-          <Send size={18} strokeWidth={1.5} />
-        </button>
+        {streaming ? (
+          <button className="composer__send" onClick={onStop} aria-label="Stop generating">
+            <Square size={18} strokeWidth={1.5} />
+          </button>
+        ) : (
+          <button
+            className="composer__send"
+            onClick={submit}
+            disabled={disabled || (!value.trim() && images.length === 0)}
+            aria-label="Send message"
+          >
+            <Send size={18} strokeWidth={1.5} />
+          </button>
+        )}
       </div>
     </div>
   );

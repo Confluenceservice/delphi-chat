@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Menu, Phone, Settings2, X } from "lucide-react";
 import { streamChat, type ChatMessage } from "./api/chat";
 import { useThreads } from "./state/useThreads";
 import { useSettings } from "./state/useSettings";
-import { type Message } from "./state/types";
+import { markDirty, reconcile } from "./state/sync";
+import { fetchTitle } from "./api/threads";
+import { type Message, type Thread } from "./state/types";
 import { stripThinking } from "./lib/thinking";
 import { MessageList } from "./ui/MessageList";
 import { Composer } from "./ui/Composer";
@@ -33,12 +35,18 @@ export default function App() {
     threads,
     activeThread,
     activeId,
+    syncState,
     createThread,
     selectThread,
     deleteThread,
+    setThreadTitle,
     appendMessage,
     updateMessage,
+    commitThread,
     setMessageSources,
+    truncateFrom,
+    dropLastAssistant,
+    mergeRemoteThread,
     newId,
   } = useThreads();
   const { memoryEnabled, setMemoryEnabled } = useSettings();
@@ -47,11 +55,76 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [conversationOpen, setConversationOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editDraft, setEditDraft] = useState<{ id: string; text: string; images?: string[] } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const thread = activeThread ?? null;
 
+  useEffect(() => {
+    void reconcile(threads, mergeRemoteThread);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function ensureThread() {
     return thread ?? createThread();
+  }
+
+  function handleStop() {
+    abortRef.current?.abort();
+  }
+
+  async function runStream(
+    t: Thread,
+    assistantId: string,
+    history: ChatMessage[],
+    userText: string,
+    wasEmpty: boolean,
+  ): Promise<string> {
+    setStreaming(true);
+    abortRef.current = new AbortController();
+    let rawText = "";
+    let finalText = "";
+
+    await streamChat({
+      model: t.model,
+      messages: history,
+      memory: memoryEnabled,
+      signal: abortRef.current.signal,
+      onDelta: (delta) => {
+        rawText += delta;
+        finalText = stripThinking(rawText);
+        updateMessage(t.id, assistantId, finalText);
+      },
+      onSources: (sources) => setMessageSources(t.id, assistantId, sources),
+      onDone: () => {
+        setStreaming(false);
+        commitThread(t.id);
+      },
+      onError: (message) => {
+        setStreaming(false);
+        setError(message);
+        finalText = stripThinking(rawText);
+        updateMessage(t.id, assistantId, finalText || `⚠️ ${message}`);
+        commitThread(t.id);
+      },
+    });
+
+    // streamChat resolves silently on abort (no onDone/onError), so make sure
+    // the partial text still gets pushed to D1.
+    setStreaming(false);
+    commitThread(t.id);
+
+    const aborted = abortRef.current?.signal.aborted ?? false;
+    if (!aborted && memoryEnabled && finalText.trim() && !finalText.includes("⚠️")) {
+      ingestMemory(userText, finalText);
+    }
+    if (!aborted && wasEmpty && finalText.trim()) {
+      void fetchTitle(userText, finalText).then((title) => {
+        if (title) setThreadTitle(t.id, title, false);
+      });
+    }
+
+    return finalText;
   }
 
   async function handleSend(text: string, images?: string[]): Promise<string> {
@@ -64,35 +137,47 @@ export default function App() {
     appendMessage(t.id, { id: assistantId, role: "assistant", content: "" });
 
     const history = [...t.messages, userMessage].map(toApiMessage);
+    const wasEmpty = t.messages.length === 0;
 
-    setStreaming(true);
-    let rawText = "";
-    let finalText = "";
+    return runStream(t, assistantId, history, text, wasEmpty);
+  }
 
-    await streamChat({
-      model: t.model,
-      messages: history,
-      memory: memoryEnabled,
-      onDelta: (delta) => {
-        rawText += delta;
-        finalText = stripThinking(rawText);
-        updateMessage(t.id, assistantId, finalText);
-      },
-      onSources: (sources) => setMessageSources(t.id, assistantId, sources),
-      onDone: () => setStreaming(false),
-      onError: (message) => {
-        setStreaming(false);
-        setError(message);
-        finalText = stripThinking(rawText);
-        updateMessage(t.id, assistantId, finalText || `⚠️ ${message}`);
-      },
-    });
-
-    if (memoryEnabled && finalText.trim() && !finalText.includes("⚠️")) {
-      ingestMemory(text, finalText);
+  function handleImportThreads(imported: Thread[]) {
+    for (const t of imported) {
+      mergeRemoteThread(t);
+      markDirty(t.id);
     }
+  }
 
-    return finalText;
+  function handleEdit(messageId: string) {
+    const m = thread?.messages.find((x) => x.id === messageId);
+    if (!m || !thread) return;
+    setEditDraft({ id: messageId, text: m.content, images: m.images });
+  }
+
+  async function submitEdit(text: string, images?: string[]): Promise<string> {
+    if (!thread || !editDraft) return "";
+    truncateFrom(thread.id, editDraft.id);
+    setEditDraft(null);
+    return handleSend(text, images);
+  }
+
+  async function handleRegenerate() {
+    if (!thread || streaming) return;
+    const messages = thread.messages;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant") return;
+
+    const historyMessages = messages.slice(0, -1);
+    const lastUser = [...historyMessages].reverse().find((m) => m.role === "user");
+    if (!lastUser) return;
+
+    dropLastAssistant(thread.id);
+    const assistantId = newId();
+    appendMessage(thread.id, { id: assistantId, role: "assistant", content: "" });
+
+    const history = historyMessages.map(toApiMessage);
+    await runStream(thread, assistantId, history, lastUser.content, false);
   }
 
   return (
@@ -133,11 +218,23 @@ export default function App() {
       )}
 
       <main className="app__main">
-        <MessageList messages={thread?.messages ?? []} streaming={streaming} />
+        <MessageList
+          messages={thread?.messages ?? []}
+          streaming={streaming}
+          onEdit={handleEdit}
+          onRegenerate={handleRegenerate}
+        />
       </main>
 
       <footer className="app__footer">
-        <Composer disabled={streaming} onSend={handleSend} />
+        <Composer
+          disabled={streaming}
+          onSend={editDraft ? submitEdit : handleSend}
+          streaming={streaming}
+          onStop={handleStop}
+          editDraft={editDraft}
+          onCancelEdit={() => setEditDraft(null)}
+        />
       </footer>
 
       {conversationOpen && (
@@ -151,6 +248,7 @@ export default function App() {
         open={drawerOpen}
         threads={threads}
         activeId={activeId}
+        syncState={syncState}
         onSelect={(id) => {
           selectThread(id);
           setDrawerOpen(false);
@@ -168,6 +266,8 @@ export default function App() {
         memoryEnabled={memoryEnabled}
         onToggleMemory={setMemoryEnabled}
         onClose={() => setSettingsOpen(false)}
+        threads={threads}
+        onImportThreads={handleImportThreads}
       />
     </div>
   );

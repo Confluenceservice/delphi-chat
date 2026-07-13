@@ -5,7 +5,9 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   try {
     response = await fetch(input, init);
   } catch (err) {
-    connectionStore.markDisconnected(input, init);
+    if (!(err instanceof DOMException && err.name === "AbortError")) {
+      connectionStore.markDisconnected(input, init);
+    }
     throw err;
   }
 

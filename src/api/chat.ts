@@ -39,6 +39,7 @@ export async function streamChat({
       signal,
     });
   } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") return;
     onError(err instanceof Error ? err.message : "Network error");
     return;
   }

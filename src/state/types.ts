@@ -18,6 +18,8 @@ export interface Thread {
   title: string;
   model: string;
   createdAt: number;
+  updatedAt?: number;
+  titleEdited?: boolean;
   messages: Message[];
 }
 

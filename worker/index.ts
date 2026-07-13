@@ -10,6 +10,8 @@ import {
   handleVoiceGet,
   handleVoicePut,
 } from "./persona-routes";
+import { handleThreadDelete, handleThreadGet, handleThreadList, handleThreadPut } from "./thread-routes";
+import { handleTitle } from "./title";
 
 async function logRequest(
   env: Env,
@@ -100,6 +102,20 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
 
     if (url.pathname === "/api/admin/audit" && request.method === "GET") {
       return handleAuditList(env, userEmail);
+    }
+
+    if (url.pathname === "/api/threads" && request.method === "GET") {
+      return handleThreadList(env, userEmail);
+    }
+    if (url.pathname.startsWith("/api/threads/")) {
+      const id = decodeURIComponent(url.pathname.slice("/api/threads/".length));
+      if (!id) return new Response("Not found", { status: 404 });
+      if (request.method === "GET") return handleThreadGet(id, env, userEmail);
+      if (request.method === "PUT") return handleThreadPut(id, request, env, userEmail);
+      if (request.method === "DELETE") return handleThreadDelete(id, env, userEmail);
+    }
+    if (url.pathname === "/api/title" && request.method === "POST") {
+      return handleTitle(request, env);
     }
 
     const memoryIdMatch = url.pathname.match(/^\/api\/memory\/([^/]+)$/);
