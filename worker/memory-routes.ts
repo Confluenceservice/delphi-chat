@@ -18,8 +18,8 @@ export async function handleMemoryIngest(request: Request, env: Env, userEmail: 
   }
 
   try {
-    const { added } = await ingestExchange(env, userEmail, body.user, body.assistant);
-    return json({ added });
+    const { added, updated, deleted } = await ingestExchange(env, userEmail, body.user, body.assistant);
+    return json({ added, updated, deleted });
   } catch (err) {
     return jsonError(err instanceof Error ? err.message : "Memory ingest failed", 500);
   }
