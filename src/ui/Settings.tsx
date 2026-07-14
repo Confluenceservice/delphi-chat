@@ -28,6 +28,7 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose, threads
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [persona, setPersona] = useState("");
   const [personaSaved, setPersonaSaved] = useState("");
   const [personaStatus, setPersonaStatus] = useState<"idle" | "saving" | "saved">("idle");
@@ -38,6 +39,7 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose, threads
   useEffect(() => {
     if (!open) return;
     setConfirmingClear(false);
+    setConfirmingDeleteId(null);
     setLoading(true);
     setError(null);
     setPersonaStatus("idle");
@@ -91,6 +93,7 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose, threads
 
   async function handleDelete(id: string) {
     const prev = facts;
+    setConfirmingDeleteId(null);
     setFacts((f) => f.filter((fact) => fact.id !== id));
     try {
       await deleteMemoryFact(id);
@@ -237,13 +240,24 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose, threads
             {facts.map((fact) => (
               <li key={fact.id} className="memory-list__item">
                 <span>{fact.text}</span>
-                <button
-                  className="memory-list__delete"
-                  onClick={() => handleDelete(fact.id)}
-                  aria-label="Forget this"
-                >
-                  <Trash2 size={14} strokeWidth={1.5} />
-                </button>
+                {confirmingDeleteId === fact.id ? (
+                  <div className="settings-confirm">
+                    <button className="settings-confirm__yes" onClick={() => handleDelete(fact.id)}>
+                      Forget
+                    </button>
+                    <button className="settings-confirm__no" onClick={() => setConfirmingDeleteId(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="memory-list__delete"
+                    onClick={() => setConfirmingDeleteId(fact.id)}
+                    aria-label="Forget this"
+                  >
+                    <Trash2 size={14} strokeWidth={1.5} />
+                  </button>
+                )}
               </li>
             ))}
           </ul>
