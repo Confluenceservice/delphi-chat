@@ -117,10 +117,7 @@ export function KnowledgePanel({ open }: Props) {
           {pending.map((item) => (
             <li key={item.id} className="kb-queue-list__item">
               <div className="kb-queue-list__question">{item.question}</div>
-              <div className="kb-queue-list__answer">
-                {item.answer.replace(/\[\d+\]|\*\*/g, "").slice(0, 220)}
-                {item.answer.length > 220 ? "…" : ""}
-              </div>
+              <div className="kb-queue-list__answer">{item.answer.replace(/\[\d+\]|\*\*/g, "")}</div>
               <div className="kb-queue-list__meta">
                 <span className="kb-queue-list__mode">{item.mode === "tutor" ? "teach me" : "answer"}</span>
                 <span>suggested by {item.suggested_by}</span>

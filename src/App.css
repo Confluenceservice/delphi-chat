@@ -756,6 +756,9 @@
   color: var(--text-muted);
   font-size: 13px;
   margin-top: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
 }
 
 .kb-queue-list__meta {

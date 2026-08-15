@@ -193,21 +193,35 @@ function titleFromQuestion(question: string): string {
 export async function approveQueueItem(env: Env, adminEmail: string, id: string): Promise<{ docId: string }> {
   const item = await env.DB.prepare("SELECT * FROM kb_queue WHERE id = ?").bind(id).first<KbQueueItem>();
   if (!item) throw new HttpError(404, "Queue item not found");
-  if (item.status !== "pending") throw new HttpError(409, "Queue item already reviewed");
 
-  const cleaned = cleanAnswerForCorpus(item.answer);
-  const docId = await addCorpusDoc(env, {
-    title: titleFromQuestion(item.question),
-    origin: "community",
-    createdBy: item.suggested_by,
-    chunks: [cleaned],
-  });
-
-  await env.DB.prepare("UPDATE kb_queue SET status = 'approved', reviewed_by = ?, reviewed_at = ? WHERE id = ?")
+  // Claim the row atomically before doing any work, so two concurrent
+  // approves (or a double-click) can't both pass a check-then-act gap and
+  // double-insert the doc.
+  const claim = await env.DB.prepare(
+    "UPDATE kb_queue SET status = 'approved', reviewed_by = ?, reviewed_at = ? WHERE id = ? AND status = 'pending'",
+  )
     .bind(adminEmail, now(), id)
     .run();
+  if (claim.meta.changes === 0) throw new HttpError(409, "Queue item already reviewed");
 
-  return { docId };
+  try {
+    const cleaned = cleanAnswerForCorpus(item.answer);
+    const docId = await addCorpusDoc(env, {
+      title: titleFromQuestion(item.question),
+      origin: "community",
+      createdBy: item.suggested_by,
+      chunks: [cleaned],
+    });
+    return { docId };
+  } catch (err) {
+    // addCorpusDoc failed after we claimed the row — revert so it's retryable.
+    await env.DB.prepare(
+      "UPDATE kb_queue SET status = 'pending', reviewed_by = NULL, reviewed_at = NULL WHERE id = ?",
+    )
+      .bind(id)
+      .run();
+    throw err;
+  }
 }
 
 export async function dismissQueueItem(env: Env, adminEmail: string, id: string): Promise<void> {

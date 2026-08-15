@@ -11,6 +11,9 @@ import {
 } from "./corpus";
 import { seedCorpus } from "./kb-seed";
 
+const MAX_QUESTION_LENGTH = 500;
+const MAX_ANSWER_LENGTH = 4000;
+
 interface SuggestBody {
   question: string;
   answer: string;
@@ -24,8 +27,14 @@ export async function handleKbSuggest(request: Request, env: Env, userEmail: str
   } catch {
     return jsonError("Invalid JSON body", 400);
   }
-  if (!body.question || !body.answer) {
-    return jsonError("Body must include { question, answer }", 400);
+  if (typeof body.question !== "string" || typeof body.answer !== "string" || !body.question.trim() || !body.answer.trim()) {
+    return jsonError("Body must include { question, answer } as non-empty strings", 400);
+  }
+  if (body.question.length > MAX_QUESTION_LENGTH || body.answer.length > MAX_ANSWER_LENGTH) {
+    return jsonError(
+      `question must be under ${MAX_QUESTION_LENGTH} chars, answer under ${MAX_ANSWER_LENGTH}`,
+      413,
+    );
   }
   const mode: ChatMode = body.mode === "tutor" ? "tutor" : "answer";
 
