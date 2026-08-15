@@ -1,4 +1,5 @@
 import { apiFetch } from "./http";
+import type { ChatMode, CorpusSource } from "../state/types";
 
 export type ChatContentPart =
   | { type: "text"; text: string }
@@ -9,12 +10,20 @@ export interface ChatMessage {
   content: string | ChatContentPart[];
 }
 
+export interface KbMeta {
+  mode: ChatMode;
+  grounded: boolean;
+  sources: CorpusSource[];
+}
+
 export interface StreamChatParams {
   model: string;
   messages: ChatMessage[];
   memory: boolean;
+  mode: ChatMode;
   onDelta: (text: string) => void;
   onSources?: (sources: { title: string; url: string }[]) => void;
+  onKbMeta?: (meta: KbMeta) => void;
   onDone: () => void;
   onError: (message: string) => void;
   signal?: AbortSignal;
@@ -24,8 +33,10 @@ export async function streamChat({
   model,
   messages,
   memory,
+  mode,
   onDelta,
   onSources,
+  onKbMeta,
   onDone,
   onError,
   signal,
@@ -35,7 +46,7 @@ export async function streamChat({
     response = await apiFetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages, memory }),
+      body: JSON.stringify({ model, messages, memory, mode }),
       signal,
     });
   } catch (err) {
@@ -78,6 +89,10 @@ export async function streamChat({
         }
         try {
           const parsed = JSON.parse(data);
+          if (parsed.kb) {
+            onKbMeta?.(parsed.kb);
+            continue;
+          }
           if (Array.isArray(parsed.sources)) {
             onSources?.(parsed.sources);
             continue;

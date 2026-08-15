@@ -6,6 +6,7 @@ import { useSettings } from "./state/useSettings";
 import { markDirty, reconcile } from "./state/sync";
 import { fetchTitle } from "./api/threads";
 import { type Message, type Thread } from "./state/types";
+import { suggestForKb } from "./api/kb";
 import { stripThinking } from "./lib/thinking";
 import { MessageList } from "./ui/MessageList";
 import { Composer } from "./ui/Composer";
@@ -44,12 +45,14 @@ export default function App() {
     updateMessage,
     commitThread,
     setMessageSources,
+    setMessageKbMeta,
+    markMessageSuggested,
     truncateFrom,
     dropLastAssistant,
     mergeRemoteThread,
     newId,
   } = useThreads();
-  const { memoryEnabled, setMemoryEnabled } = useSettings();
+  const { memoryEnabled, setMemoryEnabled, chatMode, setChatMode } = useSettings();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +92,7 @@ export default function App() {
       model: t.model,
       messages: history,
       memory: memoryEnabled,
+      mode: chatMode,
       signal: abortRef.current.signal,
       onDelta: (delta) => {
         rawText += delta;
@@ -96,6 +100,7 @@ export default function App() {
         updateMessage(t.id, assistantId, finalText);
       },
       onSources: (sources) => setMessageSources(t.id, assistantId, sources),
+      onKbMeta: (meta) => setMessageKbMeta(t.id, assistantId, meta),
       onDone: () => {
         setStreaming(false);
         commitThread(t.id);
@@ -187,6 +192,22 @@ export default function App() {
           <Menu size={20} strokeWidth={1.5} />
         </button>
         <span className="app__title">Delphi Chat</span>
+        <div className="app__mode-toggle" role="group" aria-label="Response mode">
+          <button
+            className="app__mode-option"
+            aria-pressed={chatMode === "answer"}
+            onClick={() => setChatMode("answer")}
+          >
+            Answer
+          </button>
+          <button
+            className="app__mode-option"
+            aria-pressed={chatMode === "tutor"}
+            onClick={() => setChatMode("tutor")}
+          >
+            Teach me
+          </button>
+        </div>
         <button
           className="app__conversation-toggle"
           onClick={() => {
@@ -223,6 +244,15 @@ export default function App() {
           streaming={streaming}
           onEdit={handleEdit}
           onRegenerate={handleRegenerate}
+          onSuggestForKb={(messageId) => {
+            if (!thread) return;
+            const idx = thread.messages.findIndex((m) => m.id === messageId);
+            const assistantMsg = thread.messages[idx];
+            const question = thread.messages.slice(0, idx).reverse().find((m) => m.role === "user")?.content;
+            if (!assistantMsg || !question) return;
+            suggestForKb(question, assistantMsg.content, assistantMsg.mode ?? "answer");
+            markMessageSuggested(thread.id, messageId);
+          }}
         />
       </main>
 

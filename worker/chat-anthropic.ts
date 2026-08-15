@@ -25,6 +25,7 @@ function contentChunk(text: string): Uint8Array {
  */
 export function anthropicToAppSSE(
   upstream: ReadableStream<Uint8Array>,
+  preamble?: unknown,
 ): ReadableStream<Uint8Array> {
   let buffer = "";
   let inThink = false;
@@ -112,6 +113,9 @@ export function anthropicToAppSSE(
   // that awaits reader.read() during the server-side search pause trips the
   // runtime's hang detector and the request is canceled mid-stream.
   const transform = new TransformStream<Uint8Array, Uint8Array>({
+    start(controller) {
+      if (preamble !== undefined) controller.enqueue(sseData(preamble));
+    },
     transform(chunk, controller) {
       buffer += DECODER.decode(chunk, { stream: true });
       const lines = buffer.split("\n");
@@ -132,11 +136,27 @@ export function anthropicToAppSSE(
   return upstream.pipeThrough(transform);
 }
 
+// Prepend one SSE event to a stream without touching the rest — used on the
+// image-turn passthrough path, which has no anthropicToAppSSE transcoding of
+// its own. Same TransformStream + pipeThrough shape as above; a manual pull
+// loop here would trip the Workers hang detector the same way (see above).
+export function prependSSE(event: unknown): TransformStream<Uint8Array, Uint8Array> {
+  return new TransformStream<Uint8Array, Uint8Array>({
+    start(controller) {
+      controller.enqueue(sseData(event));
+    },
+    transform(chunk, controller) {
+      controller.enqueue(chunk);
+    },
+  });
+}
+
 export async function handleChatWithSearch(
   env: Env,
   model: string,
   system: string,
   messages: unknown[],
+  preamble?: unknown,
 ): Promise<Response> {
   const upstream = await fetch(`${env.MINIMAX_BASE_URL}/anthropic/v1/messages`, {
     method: "POST",
@@ -174,7 +194,7 @@ export async function handleChatWithSearch(
     );
   }
 
-  return new Response(anthropicToAppSSE(upstream.body), {
+  return new Response(anthropicToAppSSE(upstream.body, preamble), {
     status: 200,
     headers: {
       "Content-Type": "text/event-stream",

@@ -1,12 +1,14 @@
 import type { Env } from "./types";
 import { retrieveMemories } from "./memory";
 import { buildSystemPrompt, getPersona } from "./persona";
-import { handleChatWithSearch } from "./chat-anthropic";
+import { handleChatWithSearch, prependSSE } from "./chat-anthropic";
+import { retrieveCorpus, type ChatMode } from "./corpus";
 
 interface ChatRequestBody {
   model: string;
   messages: unknown[];
   memory?: boolean;
+  mode?: ChatMode;
 }
 
 export async function handleChat(request: Request, env: Env, userEmail: string): Promise<Response> {
@@ -27,20 +29,24 @@ export async function handleChat(request: Request, env: Env, userEmail: string):
 
   const messages = [...body.messages];
   const memoryEnabled = body.memory !== false;
+  const mode: ChatMode = body.mode === "tutor" ? "tutor" : "answer";
+  const retrievalQuery = lastUserMessageText(messages);
 
-  const [persona, memoryContext] = await Promise.all([
+  const [persona, memoryContext, corpusExcerpts] = await Promise.all([
     getPersona(env, userEmail).catch(() => ""),
     memoryEnabled ? retrieveMemories(env, userEmail).catch(() => null) : Promise.resolve(null),
+    retrievalQuery ? retrieveCorpus(env, retrievalQuery).catch(() => []) : Promise.resolve([]),
   ]);
 
   // Text-only turns get web search via the Anthropic endpoint. Image turns fall
   // back to the OpenAI-compatible passthrough (vision + web_search unconfirmed),
   // so only text turns advertise the search capability in the system prompt.
   const webSearch = !hasImageContent(messages);
-  const systemPrompt = buildSystemPrompt({ persona, memoryEnabled, memoryContext, webSearch });
+  const systemPrompt = buildSystemPrompt({ persona, memoryEnabled, memoryContext, webSearch, mode, corpusExcerpts });
+  const kbEvent = { kb: { mode, grounded: corpusExcerpts.length > 0, sources: corpusExcerpts } };
 
   if (webSearch) {
-    return handleChatWithSearch(env, body.model, systemPrompt, messages);
+    return handleChatWithSearch(env, body.model, systemPrompt, messages, kbEvent);
   }
 
   messages.unshift({ role: "system", content: systemPrompt });
@@ -75,7 +81,7 @@ export async function handleChat(request: Request, env: Env, userEmail: string):
     return jsonError(`MiniMax chat request failed: ${text || upstream.statusText}`, upstream.status);
   }
 
-  return new Response(upstream.body, {
+  return new Response(upstream.body.pipeThrough(prependSSE(kbEvent)), {
     status: 200,
     headers: {
       "Content-Type": "text/event-stream",
@@ -100,4 +106,23 @@ function hasImageContent(messages: unknown[]): boolean {
       content.some((part) => (part as { type?: string })?.type === "image_url")
     );
   });
+}
+
+// The retrieval query is just the text of the most recent user turn — no
+// multi-turn query synthesis. Handles both plain-string content and the
+// multimodal content-array shape (image turns include a text part).
+function lastUserMessageText(messages: unknown[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i] as { role?: string; content?: unknown };
+    if (m?.role !== "user") continue;
+    if (typeof m.content === "string") return m.content;
+    if (Array.isArray(m.content)) {
+      const textPart = m.content.find((p) => (p as { type?: string })?.type === "text") as
+        | { text?: string }
+        | undefined;
+      return textPart?.text ?? null;
+    }
+    return null;
+  }
+  return null;
 }

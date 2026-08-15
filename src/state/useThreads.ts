@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadActiveThreadId, loadThreads, saveActiveThreadId, saveThreads } from "./storage";
-import { DEFAULT_MODEL, type Message, type Source, type Thread } from "./types";
+import { DEFAULT_MODEL, type ChatMode, type CorpusSource, type Message, type Source, type Thread } from "./types";
 import {
   markDeleted,
   markDirty,
@@ -140,6 +140,39 @@ export function useThreads() {
     [],
   );
 
+  const setMessageKbMeta = useCallback(
+    (threadId: string, messageId: string, meta: { mode: ChatMode; grounded: boolean; sources: CorpusSource[] }) => {
+      setThreads((prev) =>
+        prev.map((t) => {
+          if (t.id !== threadId) return t;
+          return {
+            ...t,
+            messages: t.messages.map((m) =>
+              m.id === messageId
+                ? { ...m, mode: meta.mode, grounded: meta.grounded, corpusSources: meta.sources }
+                : m,
+            ),
+          };
+        }),
+      );
+      // Arrives as the first SSE event; commitThread covers the sync.
+    },
+    [],
+  );
+
+  const markMessageSuggested = useCallback((threadId: string, messageId: string) => {
+    setThreads((prev) =>
+      prev.map((t) => {
+        if (t.id !== threadId) return t;
+        return {
+          ...t,
+          messages: t.messages.map((m) => (m.id === messageId ? { ...m, kbSuggested: true } : m)),
+        };
+      }),
+    );
+    markDirty(threadId);
+  }, []);
+
   /** Edit-and-resend, linear semantics: drop the message and everything after. */
   const truncateFrom = useCallback((threadId: string, messageId: string) => {
     setThreads((prev) =>
@@ -189,6 +222,8 @@ export function useThreads() {
     updateMessage,
     commitThread,
     setMessageSources,
+    setMessageKbMeta,
+    markMessageSuggested,
     truncateFrom,
     dropLastAssistant,
     mergeRemoteThread,

@@ -1,4 +1,5 @@
 import type { Env } from "./types";
+import type { ChatMode, CorpusExcerpt } from "./corpus";
 
 export const MAX_PERSONA_LENGTH = 2000;
 
@@ -43,11 +44,57 @@ export async function setVoiceId(env: Env, userEmail: string, voiceId: string): 
  * the user's custom persona (if any), and the facts retrieved for this turn
  * (if memory is enabled and any matched).
  */
+function buildEvidenceBlock(excerpts: CorpusExcerpt[]): string {
+  if (excerpts.length > 0) {
+    const sourceBlock = excerpts.map((e) => `[${e.index}] From "${e.title}": ${e.chunk}`).join("\n\n");
+    return `APPROVED KNOWLEDGE-BASE EXCERPTS (your approved internal sources):
+${sourceBlock}
+
+GROUNDING RULES:
+- Base claims about using AI at work on these excerpts and cite them inline as [1], [2] etc.
+- The [n] markers refer ONLY to the numbered excerpts above. Never use [n] for web
+  search results or any other source, and never invent sources or numbers.
+- You may still use web search for current or external information; attribute web
+  findings in words (name the site or publication) instead of [n] markers.
+- Anything not supported by the excerpts — including web findings — goes briefly
+  under a label "Beyond the docs:".`;
+  }
+  return `NO APPROVED DOCUMENTATION matched this question.
+
+GENERAL-KNOWLEDGE RULES:
+- Answer from general knowledge (and web search if useful), but make no claim to
+  organisational policy or internal facts.
+- Do NOT use citation markers like [1] — there are no approved excerpts to cite.
+  If you used web search, name those sources in words.
+- Be candid about uncertainty instead of sounding authoritative.
+- End with a single line starting exactly "Verify:" naming the specific things the
+  reader should double-check before relying on this answer.`;
+}
+
+function buildModeBlock(mode: ChatMode, grounded: boolean): string {
+  if (mode === "tutor") {
+    return `MODE: TEACH ME. Your job is to make the person more capable, not just informed.
+- Start with one sentence on WHY this matters to them at work.
+- Then give numbered, concrete steps they can actually take.
+- The first time any jargon appears, define it in plain words on its own line,
+  formatted exactly as: → term: definition
+- Teaching changes the explanation, never the evidence.
+- End with a single line starting "Try it:" — one small exercise they can do in
+  under two minutes.${grounded ? "" : ' Place the "Verify:" line after the "Try it:" line.'}`;
+  }
+  return `MODE: ANSWER. Be direct and efficient.
+- Lead with the answer in the first sentence.
+- Short paragraphs, no teaching scaffolding, no exercises.
+- Assume the reader just wants the information and will move on.`;
+}
+
 export function buildSystemPrompt(opts: {
   persona: string;
   memoryEnabled: boolean;
   memoryContext: string | null;
   webSearch: boolean;
+  mode: ChatMode;
+  corpusExcerpts: CorpusExcerpt[];
 }): string {
   const parts: string[] = [];
 
@@ -70,6 +117,8 @@ export function buildSystemPrompt(opts: {
     parts.push("You are a helpful assistant.");
   }
 
+  parts.push(buildEvidenceBlock(opts.corpusExcerpts));
+
   if (opts.persona.trim()) {
     parts.push(`The user has configured how you should behave:\n${opts.persona.trim()}`);
   }
@@ -77,6 +126,8 @@ export function buildSystemPrompt(opts: {
   if (opts.memoryContext) {
     parts.push(`Relevant things you remember about the user:\n${opts.memoryContext}`);
   }
+
+  parts.push(buildModeBlock(opts.mode, opts.corpusExcerpts.length > 0));
 
   return parts.join("\n\n");
 }

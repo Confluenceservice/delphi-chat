@@ -1,5 +1,5 @@
 import type { Env } from "./types";
-import { resolveUserEmail } from "./auth";
+import { isAdmin, resolveUserEmail } from "./auth";
 import { handleChat } from "./chat";
 import { handleTts } from "./tts";
 import { handleStt } from "./stt";
@@ -12,6 +12,15 @@ import {
 } from "./persona-routes";
 import { handleThreadDelete, handleThreadGet, handleThreadList, handleThreadPut } from "./thread-routes";
 import { handleTitle } from "./title";
+import {
+  handleKbApprove,
+  handleKbDismiss,
+  handleKbDocDelete,
+  handleKbDocsList,
+  handleKbQueueList,
+  handleKbSeed,
+  handleKbSuggest,
+} from "./kb-routes";
 
 async function logRequest(
   env: Env,
@@ -32,14 +41,6 @@ async function logRequest(
   } catch {
     // never let audit logging break the main response
   }
-}
-
-function isAdmin(userEmail: string, env: Env): boolean {
-  const admins = (env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  return admins.includes(userEmail.toLowerCase());
 }
 
 async function handleAuditList(env: Env, userEmail: string): Promise<Response> {
@@ -121,6 +122,43 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
     const memoryIdMatch = url.pathname.match(/^\/api\/memory\/([^/]+)$/);
     if (memoryIdMatch && request.method === "DELETE") {
       return handleMemoryDelete(decodeURIComponent(memoryIdMatch[1]), env, userEmail);
+    }
+
+    if (url.pathname === "/api/kb/suggest" && request.method === "POST") {
+      return handleKbSuggest(request, env, userEmail);
+    }
+
+    if (url.pathname === "/api/kb/queue" && request.method === "GET") {
+      if (!isAdmin(userEmail, env)) return new Response("Forbidden", { status: 403 });
+      return handleKbQueueList(env);
+    }
+
+    if (url.pathname === "/api/kb/docs" && request.method === "GET") {
+      if (!isAdmin(userEmail, env)) return new Response("Forbidden", { status: 403 });
+      return handleKbDocsList(env);
+    }
+
+    if (url.pathname === "/api/kb/seed" && request.method === "POST") {
+      if (!isAdmin(userEmail, env)) return new Response("Forbidden", { status: 403 });
+      return handleKbSeed(env);
+    }
+
+    const kbDocIdMatch = url.pathname.match(/^\/api\/kb\/docs\/([^/]+)$/);
+    if (kbDocIdMatch && request.method === "DELETE") {
+      if (!isAdmin(userEmail, env)) return new Response("Forbidden", { status: 403 });
+      return handleKbDocDelete(decodeURIComponent(kbDocIdMatch[1]), env);
+    }
+
+    const kbApproveMatch = url.pathname.match(/^\/api\/kb\/queue\/([^/]+)\/approve$/);
+    if (kbApproveMatch && request.method === "POST") {
+      if (!isAdmin(userEmail, env)) return new Response("Forbidden", { status: 403 });
+      return handleKbApprove(decodeURIComponent(kbApproveMatch[1]), env, userEmail);
+    }
+
+    const kbDismissMatch = url.pathname.match(/^\/api\/kb\/queue\/([^/]+)\/dismiss$/);
+    if (kbDismissMatch && request.method === "POST") {
+      if (!isAdmin(userEmail, env)) return new Response("Forbidden", { status: 403 });
+      return handleKbDismiss(decodeURIComponent(kbDismissMatch[1]), env, userEmail);
     }
   }
 
