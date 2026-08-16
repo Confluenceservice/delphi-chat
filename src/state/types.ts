@@ -1,8 +1,18 @@
 export type Role = "user" | "assistant" | "system";
 
+export type ChatMode = "answer" | "tutor";
+
 export interface Source {
   title: string;
   url: string;
+}
+
+export interface CorpusSource {
+  docId: string;
+  title: string;
+  origin: "seed" | "community";
+  chunk: string;
+  index: number;
 }
 
 export interface Message {
@@ -11,6 +21,10 @@ export interface Message {
   content: string;
   images?: string[]; // data URLs, attached by the user
   sources?: Source[]; // web_search results, attached to assistant replies
+  mode?: ChatMode; // mode the assistant reply was generated in
+  grounded?: boolean; // true if corpusSources has any hits
+  corpusSources?: CorpusSource[]; // approved knowledge-base excerpts used
+  kbSuggested?: boolean; // "suggest for knowledge base" already used
 }
 
 export interface Thread {

@@ -132,7 +132,7 @@ export function Composer({ disabled, onSend, streaming, onStop, editDraft, onCan
         <textarea
           ref={textareaRef}
           className="composer__input"
-          placeholder="Message MiniMax…"
+          placeholder="Message Delphi…"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}

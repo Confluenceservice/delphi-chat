@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import { Copy, Pencil, RotateCcw, Square, Volume2 } from "lucide-react";
+import { BookMarked, Copy, Pencil, RotateCcw, Square, Volume2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import type { Message } from "../state/types";
 import { synthesizeSpeech } from "../api/tts";
 import { playBlob, stopPlayback } from "../audio/player";
+import { AssistantBody } from "./AssistantBody";
 
 interface Props {
   messages: Message[];
   streaming: boolean;
   onEdit?: (messageId: string) => void;
   onRegenerate?: () => void;
+  onSuggestForKb?: (messageId: string) => void;
 }
 
-export function MessageList({ messages, streaming, onEdit, onRegenerate }: Props) {
+export function MessageList({ messages, streaming, onEdit, onRegenerate, onSuggestForKb }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [speakError, setSpeakError] = useState<{ id: string; message: string } | null>(null);
@@ -54,7 +56,7 @@ export function MessageList({ messages, streaming, onEdit, onRegenerate }: Props
   return (
     <div className="message-list">
       {messages.length === 0 && (
-        <div className="message-list__empty">Ask MiniMax anything.</div>
+        <div className="message-list__empty">Ask Delphi anything.</div>
       )}
       {messages.map((m) => (
         <div key={m.id} className={`message message--${m.role}`}>
@@ -66,9 +68,13 @@ export function MessageList({ messages, streaming, onEdit, onRegenerate }: Props
                 ))}
               </div>
             )}
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-              {m.content || (streaming && m.role === "assistant" ? "…" : "")}
-            </ReactMarkdown>
+            {m.role === "assistant" ? (
+              <AssistantBody message={m} placeholder={streaming ? "…" : ""} />
+            ) : (
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                {m.content}
+              </ReactMarkdown>
+            )}
             {m.role === "assistant" && m.sources && m.sources.length > 0 && (
               <div className="message__sources">
                 <span className="message__sources-label">Sources</span>
@@ -120,6 +126,17 @@ export function MessageList({ messages, streaming, onEdit, onRegenerate }: Props
                   ) : (
                     <Volume2 size={14} strokeWidth={1.5} />
                   )}
+                </button>
+              )}
+              {m.role === "assistant" && m.content && !streaming && onSuggestForKb && (
+                <button
+                  className="message__action"
+                  onClick={() => onSuggestForKb(m.id)}
+                  disabled={m.kbSuggested}
+                  aria-label={m.kbSuggested ? "Sent to review queue" : "Suggest for knowledge base"}
+                  title={m.kbSuggested ? "Sent to review queue" : "Suggest for knowledge base"}
+                >
+                  <BookMarked size={14} strokeWidth={1.5} />
                 </button>
               )}
             </div>

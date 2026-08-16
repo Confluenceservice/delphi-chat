@@ -101,3 +101,11 @@ export async function resolveUserEmail(request: Request, env: Env): Promise<stri
   const verified = await getUserEmail(request, env);
   return verified ?? (env.DEV_USER_EMAIL || null);
 }
+
+export function isAdmin(userEmail: string, env: Env): boolean {
+  const admins = (env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return admins.includes(userEmail.toLowerCase());
+}

@@ -6,6 +6,14 @@ import type { Env } from "./types";
  * return 404 — never 403 — so thread ids don't leak existence.
  */
 
+interface CorpusSourcePayload {
+  docId: string;
+  title: string;
+  origin: "seed" | "community";
+  chunk: string;
+  index: number;
+}
+
 interface ThreadMessagePayload {
   id: string;
   role: string;
@@ -13,6 +21,10 @@ interface ThreadMessagePayload {
   images?: string[];
   sources?: { title: string; url: string }[];
   createdAt?: number;
+  mode?: "answer" | "tutor";
+  grounded?: boolean;
+  corpusSources?: CorpusSourcePayload[];
+  kbSuggested?: boolean;
 }
 
 interface ThreadPayload {
@@ -56,7 +68,7 @@ export async function handleThreadGet(id: string, env: Env, userEmail: string): 
   if (!thread) return jsonError("Not found", 404);
 
   const { results } = await env.DB.prepare(
-    `SELECT id, role, content, images, sources, created_at
+    `SELECT id, role, content, images, sources, created_at, mode, grounded, corpus_sources, kb_suggested
      FROM messages WHERE thread_id = ? ORDER BY seq ASC`,
   )
     .bind(id)
@@ -69,6 +81,10 @@ export async function handleThreadGet(id: string, env: Env, userEmail: string): 
     images: parseJsonColumn<string[]>(row.images),
     sources: parseJsonColumn<{ title: string; url: string }[]>(row.sources),
     createdAt: row.created_at as number,
+    mode: (row.mode as string | null) ?? undefined,
+    grounded: row.grounded === null || row.grounded === undefined ? undefined : Boolean(row.grounded),
+    corpusSources: parseJsonColumn<CorpusSourcePayload[]>(row.corpus_sources),
+    kbSuggested: row.kb_suggested === null || row.kb_suggested === undefined ? undefined : Boolean(row.kb_suggested),
   }));
 
   return json({
@@ -117,8 +133,8 @@ export async function handleThreadPut(
     env.DB.prepare(`DELETE FROM messages WHERE thread_id = ?`).bind(id),
     ...body.messages.map((m, seq) =>
       env.DB.prepare(
-        `INSERT INTO messages (id, thread_id, seq, role, content, images, sources, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO messages (id, thread_id, seq, role, content, images, sources, created_at, mode, grounded, corpus_sources, kb_suggested)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         m.id,
         id,
@@ -128,6 +144,10 @@ export async function handleThreadPut(
         m.images && m.images.length > 0 ? JSON.stringify(m.images) : null,
         m.sources && m.sources.length > 0 ? JSON.stringify(m.sources) : null,
         m.createdAt ?? now,
+        m.mode ?? null,
+        m.grounded === undefined ? null : m.grounded ? 1 : 0,
+        m.corpusSources && m.corpusSources.length > 0 ? JSON.stringify(m.corpusSources) : null,
+        m.kbSuggested === undefined ? null : m.kbSuggested ? 1 : 0,
       ),
     ),
   ];

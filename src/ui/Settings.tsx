@@ -10,6 +10,7 @@ import { DEFAULT_VOICE_ID, VOICES } from "../data/voices";
 import { logout } from "../lib/auth";
 import { clearCacheAndReload } from "../lib/cache";
 import type { Thread } from "../state/types";
+import { KnowledgePanel } from "./KnowledgePanel";
 
 const PERSONA_MAX = 2000;
 const VOICE_PREVIEW_TEXT = "Hi! This is how I'll sound when I read replies aloud.";
@@ -153,7 +154,7 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose, threads
         <div className="settings-section">
           <div className="settings-section__title">Persona</div>
           <div className="settings-toggle__hint">
-            Tell MiniMax how to behave — its tone, role, or style. Applies to every
+            Tell Delphi how to behave — its tone, role, or style. Applies to every
             conversation.
           </div>
           <textarea
@@ -216,7 +217,7 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose, threads
             <span>
               Remember things about me
               <div className="settings-toggle__hint">
-                MiniMax can recall facts you've shared across conversations
+                Delphi can recall facts you've shared across conversations
               </div>
             </span>
             <input
@@ -228,7 +229,7 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose, threads
         </div>
 
         <div className="settings-section">
-          <div className="settings-section__title">What MiniMax remembers</div>
+          <div className="settings-section__title">What Delphi remembers</div>
 
           {loading && <div className="settings-empty">Loading…</div>}
           {error && <div className="settings-error">{error}</div>}
@@ -279,6 +280,8 @@ export function Settings({ open, memoryEnabled, onToggleMemory, onClose, threads
               </button>
             ))}
         </div>
+
+        <KnowledgePanel open={open} />
 
         <div className="settings-section">
           <div className="settings-section__title">Conversations</div>
