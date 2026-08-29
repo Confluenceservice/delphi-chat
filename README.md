@@ -15,7 +15,16 @@ See `docs/superpowers/specs/2026-07-11-minimax-chat-design.md` for the full desi
    ```
    npm install
    ```
-2. Set secrets (never commit these):
+2. Create your config from the template:
+   ```
+   cp wrangler.example.toml wrangler.toml
+   ```
+   `wrangler.toml` is gitignored because it holds account-specific values. Fill in
+   the two placeholders: `routes.pattern` (the custom domain serving this Worker —
+   the zone must already exist on your account) and `d1_databases.database_id`
+   (from `npx wrangler d1 create minimax-chat-memory`, or `npx wrangler d1 info
+   minimax-chat-memory` for an existing database).
+3. Set secrets (never commit these):
    ```
    npx wrangler secret put MINIMAX_API_KEY      # MiniMax Token Plan subscription key
    npx wrangler secret put ASR_API_KEY          # Groq (default) or OpenAI Whisper key
@@ -27,8 +36,8 @@ See `docs/superpowers/specs/2026-07-11-minimax-chat-design.md` for the full desi
    cannot verify `Cf-Access-Jwt-Assertion` and every `/api/*` request is rejected as
    unauthorized. Find both in the Cloudflare Zero Trust dashboard under
    Access > Applications > (this app) > Overview.
-3. Optional vars in `wrangler.toml` (`MINIMAX_GROUP_ID`, `ASR_PROVIDER`, `ASR_BASE_URL`, `ASR_MODEL`).
-4. `workers_dev` is set to `false` in `wrangler.toml` so the app is only reachable
+4. Optional vars in `wrangler.toml` (`MINIMAX_GROUP_ID`, `ASR_PROVIDER`, `ASR_BASE_URL`, `ASR_MODEL`).
+5. `workers_dev` is set to `false` in `wrangler.toml` so the app is only reachable
    through the Access-protected custom domain — do not re-enable it without also
    protecting the workers.dev route in Access.
 

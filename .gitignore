@@ -9,3 +9,4 @@ dist-ssr
 *.log
 .dev.vars
 .gstack
+wrangler.toml

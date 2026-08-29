@@ -1,3 +1,15 @@
+# Template for wrangler.toml, which is gitignored because it holds
+# account-specific values. Copy it and fill in the two placeholders:
+#
+#   cp wrangler.example.toml wrangler.toml
+#
+# - routes.pattern: the custom domain this Worker is served from. It must
+#   already exist as a zone on your Cloudflare account. Access is expected to
+#   protect it (see CF_ACCESS_TEAM_DOMAIN / CF_ACCESS_AUD in the README).
+# - d1_databases.database_id: `npx wrangler d1 create minimax-chat-memory`
+#   prints this, or `npx wrangler d1 info minimax-chat-memory` for an
+#   existing one.
+
 name = "minimax-chat"
 main = "worker/index.ts"
 compatibility_date = "2026-07-01"
