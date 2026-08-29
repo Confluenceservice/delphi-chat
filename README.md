@@ -168,8 +168,13 @@ makes the chat provider pluggable while keeping voice and search on MiniMax.
    npx wrangler d1 create minimax-chat-memory
    npx wrangler vectorize create minimax-memory --dimensions 1024 --metric cosine
    ```
-   The dimensions must match the embedding model (`@cf/baai/bge-m3`, 1024-dim).
-   A mismatch fails at query time, not at creation.
+   The dimensions must match the embedding model (`@cf/baai/bge-m3`, 1024-dim);
+   a mismatch fails at query time, not at creation. There is no Vectorize preset
+   for bge-m3, so both flags must be given explicitly. The metric must be `cosine`
+   because retrieval treats a higher score as more similar and thresholds it in
+   [0, 1] (`KB_MIN_SCORE` 0.5 in `worker/corpus.ts`; dedup 0.93 and related 0.7 in
+   `worker/memory.ts`). On an existing deployment, confirm with
+   `npx wrangler vectorize get minimax-memory`.
 3. Create your config from the template:
    ```
    cp wrangler.example.toml wrangler.toml
