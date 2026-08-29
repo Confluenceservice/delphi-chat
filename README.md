@@ -11,8 +11,9 @@ See `docs/superpowers/specs/2026-07-11-minimax-chat-design.md` for the full desi
 
 ## Model dependencies
 
-Seven capabilities across three providers. Two of them are MiniMax-specific and
-are the reason this is not simply "swap the base URL":
+Seven capabilities across three providers. Two of them — web search and
+text-to-speech — have no equivalent outside MiniMax, which is why moving off it
+is not simply "swap the base URL":
 
 | Capability | Provider | Config | Swappable |
 |---|---|---|---|
