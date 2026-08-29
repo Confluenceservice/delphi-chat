@@ -257,6 +257,14 @@ npm run build
 npx wrangler deploy
 ```
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+The build pulls in a few non-permissive packages (`sharp-libvips` LGPL,
+`lightningcss` MPL-2.0, `caniuse-lite` CC-BY-4.0), but all are build-time only
+and none ship in `dist/`, so the distributed app carries no copyleft obligation.
+
 ## Design docs
 
 `docs/superpowers/specs/` holds the design history — the original app design, then
