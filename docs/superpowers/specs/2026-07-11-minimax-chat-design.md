@@ -1,5 +1,11 @@
 # MiniMax Chat — Mobile-Friendly Claude-style App
 
+> **Status:** original v1 design, 2026-07-11. Two locked decisions below were
+> later superseded (auth and memory scoping) and are struck through inline.
+> For current behaviour see the README; for what changed and why, see the
+> durable-conversations, web-search, and memory-reconciliation designs in this
+> directory.
+
 ## Context
 
 Build a mobile-friendly chat app in the style of Claude, powered by the **MiniMax**
@@ -21,11 +27,17 @@ so a thin backend proxies all provider calls and holds secrets.
   key env-swappable (OpenAI Whisper as drop-in alt).
 - **Backend/host:** single Cloudflare Worker with Static Assets — serves the built
   PWA and `/api/*`. One `wrangler deploy`.
-- **Users:** personal, no login. Subscription key server-side. Conversations in
-  browser storage.
+- **Users:** ~~personal, no login~~ — **superseded.** The app is now behind
+  Cloudflare Access; every `/api/*` request carries a verified Access JWT and the
+  email claim is the per-user partition key. Subscription key stays server-side.
+  Conversations are in D1 (see the durable-conversations design), with browser
+  storage as the client-side cache.
 - **Memory:** all-Cloudflare, no extra vendor — Vectorize (embeddings) + D1 (fact
-  text/metadata) + Workers AI embeddings + MiniMax-M3 fact extraction. Single fixed
-  namespace (`default`) since no login.
+  text/metadata) + Workers AI embeddings + MiniMax-M3 fact extraction.
+  ~~Single fixed namespace (`default`) since no login.~~ **Superseded:** facts are
+  scoped per user by `user_email` in D1, and the Vectorize `namespace` metadata
+  field carries the user's email. The `default` constant survives only as a
+  vestigial D1 column value.
 
 ## Architecture
 

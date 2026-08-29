@@ -178,7 +178,7 @@ CREATE INDEX idx_messages_thread ON messages(thread_id, seq);
 ## Task 8 (ride-along, optional): memory namespace cleanup + doc truth
 
 - [ ] Migration dropping the vestigial `namespace` column from `memory_facts`; remove the `NAMESPACE` constant and its bindings from the four queries in `worker/memory.ts`. Gate: `npm run build` + memory list/ingest smoke unchanged.
-- [ ] Update `docs/superpowers/specs/2026-07-11-minimax-chat-design.md` to reflect Cloudflare Access + per-email scoping (remove "no login" / "single fixed namespace").
+- [x] Update `docs/superpowers/specs/2026-07-11-minimax-chat-design.md` to reflect Cloudflare Access + per-email scoping (remove "no login" / "single fixed namespace").
 - [ ] Commit.
 
 ---
