@@ -3,9 +3,9 @@
 Mobile-friendly chat app powered by the MiniMax model family (Token Plan). React +
 Vite frontend, single Cloudflare Worker backend (chat proxy, TTS, STT, memory).
 
-**Live:** the deployed custom domain — open this on your phone to
-test push-to-talk, read-aloud, and conversation mode; `wrangler dev` on localhost
-can't be reached from a phone and mic/service-worker access needs a secure context.
+Test push-to-talk, read-aloud, and conversation mode on the deployed Access-protected
+custom domain (see `routes` in `wrangler.toml`) — `wrangler dev` on localhost can't be
+reached from a phone, and mic/service-worker access needs a secure context.
 
 See `docs/superpowers/specs/2026-07-11-minimax-chat-design.md` for the full design.
 
