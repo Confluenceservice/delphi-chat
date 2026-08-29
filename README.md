@@ -9,6 +9,30 @@ reached from a phone, and mic/service-worker access needs a secure context.
 
 See `docs/superpowers/specs/2026-07-11-minimax-chat-design.md` for the full design.
 
+## Model dependencies
+
+Seven capabilities across three providers. Two of them are MiniMax-specific and
+are the reason this is not simply "swap the base URL":
+
+| Capability | Provider | Config | Swappable |
+|---|---|---|---|
+| Chat streaming | MiniMax `/v1/chat/completions` | `MINIMAX_API_KEY`, `MINIMAX_BASE_URL` | **Yes** — standard OpenAI shape, any compatible endpoint |
+| Chat titles | MiniMax, model hardcoded (`MiniMax-M2.7`) | same | Yes, once the model ID moves to config |
+| Memory extraction | MiniMax, model hardcoded (`MiniMax-M3`) | same | Yes, same caveat; also strips `<think>` blocks |
+| Web search | MiniMax `/anthropic/v1/messages`, `web_search` server tool | same | **No** — MiniMax-only endpoint and response shape |
+| Text-to-speech | MiniMax `/v1/t2a_v2` | same | **No** — MiniMax voice IDs, hex audio, `base_resp` envelope |
+| Speech-to-text | Groq (default) or OpenAI Whisper | `ASR_PROVIDER`, `ASR_BASE_URL`, `ASR_MODEL`, `ASR_API_KEY` | **Already abstracted** |
+| Embeddings | Cloudflare Workers AI `@cf/baai/bge-m3` | `[ai]` binding | Provider-free |
+
+Practical consequence: pointing chat at another provider (OpenRouter, OpenAI,
+a local endpoint) is a contained change, but web search and read-aloud have no
+equivalent there and would stay on MiniMax or be lost. `worker/stt.ts` is the
+existing template for how a provider seam should look here.
+
+Selectable chat models live in `MODELS` in `src/state/types.ts`.
+See `docs/superpowers/specs/2026-08-29-provider-seam-design.md` for a design that
+makes the chat provider pluggable while keeping voice and search on MiniMax.
+
 ## Setup
 
 1. Install deps:
