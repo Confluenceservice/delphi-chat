@@ -1,4 +1,4 @@
-# MiniMax Chat
+# Delphi Chat
 
 Mobile-friendly chat app powered by the MiniMax model family (Token Plan). React +
 Vite frontend, single Cloudflare Worker backend (chat proxy, TTS, STT, memory).
