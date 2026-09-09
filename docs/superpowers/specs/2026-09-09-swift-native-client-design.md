@@ -443,21 +443,27 @@ probe-verified to survive the protocol boundary and still be readable inside
 token is the second kind**: it cannot be baked into `Configuration`, and §4's
 refresh actor must be reachable from inside `respond`.
 
-**A refresh actor is no longer dead code — but the refresh *protocol* is still
-unobserved, and the distinction decides what to build.** This paragraph
-previously said refresh-token issuance was unconfirmed, so an actor written now
-might have nothing to refresh with. That is settled: spike 2's exchange
-returned a refresh token (71 characters, carrying the same `oauth:` prefix as
-the access token) alongside a 900-second access token. There *is* something to
-serialise, refreshing is the intended mechanism rather than re-running the
-authorization leg, and §4's coalescing refresh actor has a real job.
+**A refresh actor is no longer dead code, and the refresh *protocol* is no
+longer unobserved either.** This paragraph previously said refresh-token
+issuance was unconfirmed, so an actor written then might have had nothing to
+refresh with — settled by spike 2's exchange, which returned a refresh token
+(71 characters, carrying the same `oauth:` prefix as the access token)
+alongside a 900-second access token. It then said the grant itself was
+unexercised, so the actor would have to guess at rotation — settled by Phase
+1A task 2 (2026-09-10; `API-NOTES.md` §12), which posted
+`grant_type=refresh_token` for the first time. It returned `200`: no
+`client_secret`, `expires_in` `900` again, and a **different** `refresh_token`
+on every call. There *is* something to serialise, refreshing is the intended
+mechanism rather than re-running the authorization leg, and §4's coalescing
+refresh actor has a real job with a real, observed contract.
 
-What is still unobserved is the grant itself. **Issuance is not exercise.** No
-`grant_type=refresh_token` request has ever been posted to the token endpoint,
-so whether it is accepted for a public client, what it returns, whether the
-refresh token rotates on use, and how long it lives are all unverified. Build
-the actor; do not encode assumptions about rotation or refresh-token lifetime
-into it, and treat the first real refresh as the thing that decides those.
+**Build the actor to persist the rotated refresh token atomically, not to
+guess at rotation.** That was the open question; it is closed, and the answer
+is rotation-on-use, so losing the new token after a successful refresh is the
+failure mode to design against, not an edge case to defer. What is *not*
+settled is whether the pre-refresh token keeps working for any interval after
+rotation — nothing has measured that, and the actor should not assume it
+does.
 
 The seam rule from spike 1 stands unchanged and is independent of all of this:
 whatever supplies a credential to `respond` must be resolved at call time
@@ -739,14 +745,21 @@ row with a real email shows *some* request carried a verified assertion, not
 that this one did. The row supplies the identity value; the `200` carries the
 finding.
 
-**Still not established:** the **refresh grant** — a refresh token exists, but
-`grant_type=refresh_token` has never been posted, so acceptance for a public
-client, rotation, and refresh-token lifetime are all unverified (issuance is
-not exercise); **revocation** — the endpoint is advertised and the logout step
-below uses it, but nothing has been posted to it; **the `resource` parameter's
-accepted forms and audience semantics** — see the Flow section; and **scopes** —
-`scopes_supported` is absent from discovery and the token response returned
-`scope: ""`, which establishes only that none was sent and none demanded.
+**Now established (Phase 1A task 2, 2026-09-10; `API-NOTES.md` §12):** the
+refresh grant. `grant_type=refresh_token` was posted for the first time and
+returned `200` for this public client — no `client_secret`, `expires_in`
+`900` again, and a **different** `refresh_token` on every call. See "Token
+lifecycle" below for what that means for the actor.
+
+**Still not established:** **revocation** — the endpoint is advertised and
+the logout step below uses it, but nothing has been posted to it; **the
+`resource` parameter's accepted forms and audience semantics** — see the Flow
+section; **scopes** — `scopes_supported` is absent from discovery and the
+token response returned `scope: ""`, which establishes only that none was
+sent and none demanded; and, narrower than before but still open, **whether
+the pre-refresh refresh token is invalidated immediately or survives a grace
+window** — confirming either costs a second live refresh call, which the
+spike that exercised the grant deliberately did not make.
 
 ### Flow
 
@@ -823,10 +836,16 @@ dashboard edit changes.
 - Refresh serialized through an actor with **request coalescing**: ten
   concurrent 401s produce one refresh. **There is a refresh token to
   serialize** — one is issued alongside the access token, 71 characters, with
-  the same `oauth:` prefix. **The refresh grant itself has never been run**, so
-  do not encode assumptions about rotation-on-use or refresh-token lifetime
-  into the actor; let the first real refresh settle those. Issuance is not
-  exercise.
+  the same `oauth:` prefix. **The refresh grant has been exercised (Phase 1A
+  task 2, 2026-09-10; `API-NOTES.md` §12).** `grant_type=refresh_token` was
+  posted for the first time and returned `200`: no `client_secret` required,
+  `expires_in` `900` again, and — the load-bearing fact for this actor —
+  **the refresh token rotates on use.** The actor must persist the new
+  refresh token atomically with, or before, discarding the old one: losing it
+  after a successful refresh leaves no valid refresh token at all, only a
+  spent one. Whether the pre-refresh token is invalidated immediately or
+  survives a grace window is still unverified — that would cost a second live
+  refresh call, which was deliberately not made.
 - **Proactive refresh before opening a chat stream.** A long SSE response that
   401s mid-stream cannot be blindly retried, because tokens are already rendered
   and a retry duplicates them. If expiry is under ~60s, refresh first.
@@ -1148,12 +1167,16 @@ chat pipeline testable with no network and no model.
   absence). The residual risk is that a change to any link
   invalidates the conclusion silently. Reading the header directly, once a
   device build can log it, would retire this risk cheaply.
-- **The refresh grant has never been exercised.** A refresh token is issued and
-  its shape is known; `grant_type=refresh_token` has never been posted. §4's
-  refresh actor is therefore built against an unobserved contract for rotation
-  and refresh lifetime, and every fresh token today costs an interactive human
-  sign-in. Exercise it in the first Phase 1 auth task, before the actor's
-  behaviour hardens around a guess.
+- **The refresh grant rotates on use, and losing the rotated token is the
+  failure mode to design against.** Exercised in the first Phase 1 auth task
+  (2026-09-10, `API-NOTES.md` §12): `grant_type=refresh_token` returned `200`
+  for this public client, with a **different** `refresh_token` on every call.
+  §4's refresh actor must persist the rotated token atomically; a crash
+  between a successful refresh and saving its result strands the client with
+  a spent refresh token and no fallback but an interactive sign-in. Whether
+  the pre-refresh token is invalidated immediately or survives a grace window
+  is still unverified — testing that costs a second live call, which this
+  spike deliberately did not make.
 - **Runtime facts the SDK cannot supply.** The context window, whether it is a
   total or input-only budget, whether the on-device model declares `.vision`,
   whether PCC works at all on a device, and whether PCC needs an entitlement —
