@@ -99,7 +99,14 @@ export async function getUserEmail(request: Request, env: Env): Promise<string |
 
 export async function resolveUserEmail(request: Request, env: Env): Promise<string | null> {
   const verified = await getUserEmail(request, env);
-  return verified ?? (env.DEV_USER_EMAIL || null);
+  if (verified) return verified;
+
+  // Fail closed. The dev fallback requires an explicit opt-in that only ever
+  // lives in .dev.vars, so a missing or misconfigured CF_ACCESS_* pair returns
+  // 401 instead of opening all 24 routes to an unauthenticated caller.
+  if (env.ALLOW_DEV_USER !== "true") return null;
+
+  return env.DEV_USER_EMAIL || null;
 }
 
 export function isAdmin(userEmail: string, env: Env): boolean {

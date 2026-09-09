@@ -229,6 +229,7 @@ makes the chat provider pluggable while keeping voice and search on MiniMax.
 | `CF_ACCESS_AUD` | secret | yes | Access application audience tag |
 | `ADMIN_EMAILS` | secret | no | Comma-separated admin allowlist |
 | `DEV_USER_EMAIL` | `.dev.vars` | local only | Stands in for a verified email |
+| `ALLOW_DEV_USER` | `.dev.vars` | local only | Must be `"true"` for `DEV_USER_EMAIL` to be honoured. Never set it on a deployed environment — it re-opens every route to unauthenticated callers |
 
 ## Develop
 
@@ -246,9 +247,10 @@ threads, persona, and TTS/STT work normally.
 
 ## Local development auth
 
-CF Access is not available in `wrangler dev`. Set `DEV_USER_EMAIL=you@example.com` in
-`.dev.vars` to simulate an authenticated user. Put that email in `ADMIN_EMAILS` too
-if you need the admin routes locally.
+CF Access is not available in `wrangler dev`. Set `DEV_USER_EMAIL=you@example.com`
+**and** `ALLOW_DEV_USER=true` in `.dev.vars`. Without the second variable the
+Worker fails closed and every `/api/*` route returns 401. Put that email in
+`ADMIN_EMAILS` too if you need the admin routes locally.
 
 ## Deploy
 

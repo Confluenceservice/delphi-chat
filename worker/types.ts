@@ -11,6 +11,8 @@ export interface Env {
   VECTORIZE: VectorizeIndex;
   DB: D1Database;
   DEV_USER_EMAIL?: string;
+  /** Local development only. Must never be set on a deployed environment. */
+  ALLOW_DEV_USER?: string;
   ADMIN_EMAILS?: string;
   CF_ACCESS_TEAM_DOMAIN?: string;
   CF_ACCESS_AUD?: string;
