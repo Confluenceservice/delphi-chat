@@ -412,6 +412,8 @@ bin/dump-api FoundationModels /tmp/fm-ios27.json
 python3 - <<'EOF'
 import json
 d = json.load(open('/tmp/fm-ios27.json'))
+root = d['ABIRoot']          # everything nests under ABIRoot; walking d finds nothing
+assert root.get('children'), 'dump has no declarations — regenerate it, do NOT treat as a negative result'
 def walk(n, depth=0):
     name = n.get('printedName') or n.get('name') or ''
     kind = n.get('declKind') or n.get('kind') or ''
@@ -419,7 +421,7 @@ def walk(n, depth=0):
         print(f"{'  '*depth}{kind:16} {name}")
     for c in n.get('children', []):
         walk(c, depth+1)
-walk(d)
+walk(root)
 EOF
 ```
 
@@ -493,13 +495,15 @@ cd /Users/thomasb/delphi-apple
 python3 - <<'EOF'
 import json
 d = json.load(open('/tmp/fm-ios27.json'))
+root = d['ABIRoot']          # everything nests under ABIRoot; walking d finds nothing
+assert root.get('children'), 'dump has no declarations — regenerate it, do NOT treat as a negative result'
 def walk(n):
     name = n.get('printedName') or ''
     if any(k in name for k in ('contextSize', 'tokenCount', 'availability', 'Availability')):
         print(f"{n.get('declKind') or n.get('kind'):16} {name}")
     for c in n.get('children', []):
         walk(c)
-walk(d)
+walk(root)
 EOF
 ```
 
@@ -567,13 +571,15 @@ cd /Users/thomasb/delphi-apple
 python3 - <<'EOF'
 import json
 d = json.load(open('/tmp/fm-ios27.json'))
+root = d['ABIRoot']          # everything nests under ABIRoot; walking d finds nothing
+assert root.get('children'), 'dump has no declarations — regenerate it, do NOT treat as a negative result'
 def walk(n):
     name = n.get('printedName') or ''
     if any(k in name.lower() for k in ('image', 'vision', 'multimodal', 'cgimage', 'attachment')):
         print(f"{n.get('declKind') or n.get('kind'):16} {name}")
     for c in n.get('children', []):
         walk(c)
-walk(d)
+walk(root)
 EOF
 ```
 
@@ -631,6 +637,8 @@ cd /Users/thomasb/delphi-apple
 python3 - <<'EOF'
 import json
 d = json.load(open('/tmp/fm-ios27.json'))
+root = d['ABIRoot']          # everything nests under ABIRoot; walking d finds nothing
+assert root.get('children'), 'dump has no declarations — regenerate it, do NOT treat as a negative result'
 seen = set()
 def walk(n):
     name = n.get('printedName') or ''
@@ -639,7 +647,7 @@ def walk(n):
         print(f"{n.get('declKind') or n.get('kind'):16} {name}")
     for c in n.get('children', []):
         walk(c)
-walk(d)
+walk(root)
 EOF
 ```
 
