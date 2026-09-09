@@ -1,11 +1,12 @@
 # Swift Native Client — Design
 
 Date: 2026-09-09
-Revised: 2026-09-10 — reconciled against Phase 0 (task 8)
+Revised: 2026-09-10 — reconciled against Phase 0 (task 8), then again the same
+day when spike 2's human sign-in closed the last open gate
 Status: Proposed (design only, not implemented). All six Phase 0 spikes have
-returned; one is partial and blocked on a human sign-in, and several questions
-were established as needing a device rather than answered. Read "Phase 0 outcome
-and the Phase 1 go/no-go" below before building against any section.
+returned and **none is outstanding**; several questions were established as
+needing a device rather than answered. Read "Phase 0 outcome and the Phase 1
+go/no-go" below before building against any section.
 
 ## Goal
 
@@ -62,7 +63,7 @@ reported as a claim count.)
 | Spike | Question | Outcome |
 |---|---|---|
 | 1 | Can a custom conformance wrap the Worker as a `LanguageModel`? | **Yes**, probe-verified. §2's architecture stands. `CoreAILanguageModel` does not exist and is withdrawn. |
-| 2 | Access Managed OAuth end to end | **Partial.** Registration and enforcement verified live; **no token was ever issued**, so §4's core claim is *not yet verified*. Blocked on one human sign-in. |
+| 2 | Access Managed OAuth end to end | **Yes.** The sign-in happened; a token was issued, the origin accepted it, the Worker ran and `audit_log` recorded a real identity. §4's central claim — `worker/auth.ts` needs no changes — **holds**. One qualification: assertion-header delivery is **inferred from a chain, not observed**. |
 | 3 | `contextSize` / `tokenCount(for:)` usable for a pre-generation budget | **Yes** — but the window is **runtime-discovered**, not the fixed 4,096 this spec asserted. |
 | 4 | Foundation Models vision | **API-level yes.** "Assume text-only" is **falsified**. Whether the on-device model *declares* `.vision` is unestablished. |
 | 5 | On-device `@Generable` memory extraction vs today's extractor | **Measured NO-GO.** And the defect that motivated the move did not occur once in 96 baseline calls. |
@@ -74,42 +75,65 @@ against their real sources and names every block it could *not* check. They
 produced no design claim; they are why the claims above can be re-checked
 rather than believed.
 
-### Verdict: **GO for Phase 1**, with one gate.
+### Verdict: **GO for Phase 1**, no longer gated.
 
-**The gate.** §4's core claim — that Access converts a Managed OAuth bearer
-token into a `Cf-Access-Jwt-Assertion` header at the origin, so
-`worker/auth.ts` is untouched — is **unverified, not refuted**. Spike 2 stopped
-at an interactive Cloudflare Access login page; no token was ever issued.
-Specifically unconfirmed: token issuance at all, `expires_in` (and therefore
-the assumed 5–15 minute lifetime), the `oauth:` token prefix, refresh-token
-issuance, delivery of `Cf-Access-Jwt-Assertion` to the origin, and the
-`audit_log` identity. Finishing it needs one person to sign in; the procedure
-is in `API-NOTES.md`, spike 2, "How to finish it".
+**The gate is closed.** It was §4's core claim — that Access converts a Managed
+OAuth bearer token into a `Cf-Access-Jwt-Assertion` header at the origin, so
+`worker/auth.ts` is untouched. On 2026-09-10 a person signed in, the exchange
+ran, and the token was presented to `GET /api/threads`. The Worker returned
+`200` with its own JSON body, and `audit_log` recorded the signed-in user's
+real SSO address. Every item this section previously listed as unconfirmed is
+answered: token issuance, `expires_in` (`900`, exactly the configured 15
+minutes), the `oauth:` prefix (present on the access token *and* the refresh
+token), refresh-token issuance, origin acceptance, and the `audit_log`
+identity. **`worker/auth.ts` needed no changes, and that is now a finding
+rather than an assumption.**
 
-**If that sign-in shows Access does not deliver the assertion header to the
-origin, §4 must be redesigned before Phase 1 starts** — every one of the 24
-routes sits behind that application, so it is a blocker rather than a
-degradation. Nothing observed so far predicts that outcome; the point is that
-nothing observed so far excludes it either.
+**One claim inside that result is weaker than the others, and must be cited as
+such: the assertion header was never observed.** Nothing read
+`Cf-Access-Jwt-Assertion`. That it reaches the origin is **inferred from a
+chain**: the `200` means `resolveUserEmail` returned non-null
+(`worker/index.ts:59-62` 401s otherwise); `DEV_USER_EMAIL` is absent from the
+deployment as both secret and `[vars]`, so the fallback branch could not have
+supplied it; therefore the value came from `getUserEmail`
+(`worker/auth.ts:93-97`), which reads that header at `worker/auth.ts:94` and
+returns null without it. `API-NOTES.md` labels this **mechanism-reasoning**,
+the class it already uses for exactly this shape of argument, which ranks below
+every observed class in that file. The chain is checkable link by link; none of
+the links is the header, and one of them — `DEV_USER_EMAIL`'s absence — is a
+mutable deployment fact rather than a property of the code. Do not restate it
+as "verified".
 
-**Not gated on the sign-in, and startable today:** the `LanguageModel`
+Note also what the `audit_log` row can and cannot carry. Access delivers the
+same assertion header for a cookie-authenticated *browser* request, and the web
+app hits the same route — so a row with a real email proves some request
+carried a verified assertion, not that this one did. The row's contribution is
+the identity *value*; the load-bearing observation is the `200` with a
+Worker-shaped body.
+
+**Startable today, and nothing waits on anything:** the `LanguageModel`
 conformance architecture (§2, spike 1), the native audio stack (§3, untouched
-by any spike), and `swift-markdown-ui` rendering (§5). None of these crosses an
-Access-protected route, so none of them waits on anything.
+by any spike), `swift-markdown-ui` rendering (§5), and — now — SwiftData and
+the ported sync semantics (§1). See the next paragraph for the one thing that
+changed about §1 and the one thing that did not.
 
-**Startable today, but only against a mock — explicitly not end to end:**
-SwiftData and the ported sync semantics (§1). This was previously listed as
-flatly startable, which reads as "can be finished today". It cannot. The
-SwiftData `@Model` classes, the dirty set, the 2s debounce and the
-`pending`/`synced`/`error` state machine are all writable now and depend on no
-Phase 0 result. What they sync *through* does: §1's Phase 1 semantics are
-whole-thread `PUT` and `GET` against `/api/threads`, which sits behind the same
-Access application as every other route. Until the gate below closes this work
-can be written and unit-tested against a mock transport, and **cannot be
-exercised against the real Worker at all**. Treat "sync is correct" as unproven
-until a real token has reached the origin: before that, a port bug and a
-mock-fidelity bug are indistinguishable — which is exactly the confusion §1's
-"provably equivalent to the web app" requirement exists to prevent.
+**§1 keeps its "build against a mock" label, and the reason for it has
+changed.** The mock stays because it is the right development substrate:
+offline work, unit tests and CI cannot reach an Access-protected route, and a
+deterministic transport is what a port-fidelity test wants anyway. What is
+withdrawn is the sentence that said this work **"cannot be exercised against
+the real Worker at all"** — that is now false. A real token reaches the origin
+and comes back with a real Worker response.
+
+So the constraint moved from a **gate** to a **cost**. End-to-end exercise is
+possible; each round of it needs a fresh 15-minute token, and a fresh token
+needs an interactive human sign-in, because the refresh grant has been *issued*
+but never *exercised* (see §2's note). Consequence for §1's "provably
+equivalent to the web app" requirement: it is no longer unprovable until some
+future event. It is provable now, in batches, at the price of a sign-in — and
+"sync is correct" should not be claimed on mock evidence alone, because a port
+bug and a mock-fidelity bug remain indistinguishable until something has
+actually crossed the wire.
 
 **Removed from Phase 1 scope on measured evidence:** moving memory extraction
 on-device (§2, spike 5). Extraction stays server-side. This is a scope
@@ -136,9 +160,12 @@ read, with a named owner and a definition of done.
 Spike 2 registered two DCR clients and there is no known way to remove them:
 the `revocation_endpoint` that discovery advertises revokes *tokens*, not
 *registrations*.
-*Owner:* the Cloudflare Access tenant operator — the same person, and the same
-console session, as the sign-in that closes the gate above, so it costs nothing
-extra to do it then.
+*Owner:* the Cloudflare Access tenant operator. **The free ride is gone.** This
+item was previously scheduled to ride along with the gate-closing sign-in, at
+no extra cost; that sign-in has now happened and this was not done during it, so
+it needs its own console session. It also grew by one: the flow has since been
+run again, and each `register-client.sh` run leaves another undeletable
+record.
 *Done when:* §4's per-install-versus-per-user registration question is answered
 in writing (per-install registration means these records accumulate forever,
 one per reinstall, with no cleanup story), **and** either a deletion path is
@@ -268,8 +295,8 @@ Access middleware in `worker/index.ts`.
     │     └── sync ⇄ D1 via /api/threads
     │
     └── Access Managed OAuth (PKCE,      Authorization: Bearer <access token>
-          public client, RFC 8707        (the `oauth:` prefix is unverified —
-          `resource` param required)      no token has yet been issued; §4)
+          public client, RFC 8707        (`oauth:`-prefixed, expires_in 900,
+          `resource` param required)      refresh token issued; §4)
 
   Cloudflare Worker (unchanged except where noted)
     ├── /api/chat        grounded inference, web search, images
@@ -298,6 +325,15 @@ same UI affordance.
 
 This is deliberately not an improvement. Phase 1 must be provably equivalent to
 the web app, or a port bug is indistinguishable from a design bug.
+
+**Build this against a mock transport; prove it against the real Worker.** The
+mock is the development substrate — offline work, unit tests and CI cannot
+reach an Access-protected route. But since 2026-09-10 the real path *is*
+exercisable: a bearer token reaches the origin and `/api/threads` answers with
+real Worker JSON. Do not declare the port equivalent on mock evidence alone,
+because that is precisely the case where a port bug and a mock-fidelity bug
+look the same. The cost of a real run is one 15-minute token and one
+interactive sign-in (§4), so batch them rather than skipping them.
 
 ### Phase 2 — invert to local-first
 
@@ -407,21 +443,26 @@ probe-verified to survive the protocol boundary and still be readable inside
 token is the second kind**: it cannot be baked into `Configuration`, and §4's
 refresh actor must be reachable from inside `respond`.
 
-**That dependency is second-order — read §4 before building the actor.** The
-constraint above is probe-verified, but it is *stated in terms of* §4's token
-lifecycle, and that lifecycle is the unverified half of the Phase 1 gate.
-Spike 2 issued no token, so **refresh-token issuance is itself unconfirmed**:
-discovery lists `refresh_token` under `grant_types_supported`, which is a
-statement about the grant, not evidence that one is ever returned. If no
-refresh token is issued, a refresh actor built now is dead code written to a
-shape nobody has observed — and the real mechanism may turn out to be re-running
-the authorization leg rather than refreshing at all.
+**A refresh actor is no longer dead code — but the refresh *protocol* is still
+unobserved, and the distinction decides what to build.** This paragraph
+previously said refresh-token issuance was unconfirmed, so an actor written now
+might have nothing to refresh with. That is settled: spike 2's exchange
+returned a refresh token (71 characters, carrying the same `oauth:` prefix as
+the access token) alongside a 900-second access token. There *is* something to
+serialise, refreshing is the intended mechanism rather than re-running the
+authorization leg, and §4's coalescing refresh actor has a real job.
 
-What is safe to build now is the **seam**, not the protocol: whatever supplies
-a credential to `respond` must be resolved at call time rather than captured in
-`Configuration`. That is a property of the framework, probe-verified in spike 1,
-and it holds whatever the token mechanism turns out to be. Wire the seam; do
-not wire a refresh protocol to an unobserved contract.
+What is still unobserved is the grant itself. **Issuance is not exercise.** No
+`grant_type=refresh_token` request has ever been posted to the token endpoint,
+so whether it is accepted for a public client, what it returns, whether the
+refresh token rotates on use, and how long it lives are all unverified. Build
+the actor; do not encode assumptions about rotation or refresh-token lifetime
+into it, and treat the first real refresh as the thing that decides those.
+
+The seam rule from spike 1 stands unchanged and is independent of all of this:
+whatever supplies a credential to `respond` must be resolved at call time
+rather than captured in `Configuration`. That is a property of the framework,
+probe-verified, and it holds whatever the token mechanism turns out to be.
 
 **Open, and not compile-checkable:** whether cancellation propagates from the
 session to the executor's `Task`. Needs an executable spike; not a Phase 0
@@ -582,9 +623,10 @@ unwritten de-MiniMax spec. The native client calls `/api/chat` and does not care
 watchOS — hence watchOS is out of scope.
 
 **No Phase 0 spike touched the audio stack.** Every claim in §3 still rests on
-secondary reading, not on a probe against the SDK. It is not marked unverified
-in the sense §4 is — nothing here has been contradicted, and none of it gates
-anything else — but the first Phase 1 task in this area should confirm the
+secondary reading, not on a probe against the SDK — which, now that §4 has been
+exercised end to end, makes this the least-verified section of the design.
+Nothing here has been contradicted and none of it gates anything else, but the
+first Phase 1 task in this area should confirm the
 `SpeechAnalyzer` / `SpeechTranscriber` / `SpeechDetector` surface the same way
 spikes 1 and 3 confirmed `FoundationModels`, before the audio port is written
 against it.
@@ -623,14 +665,18 @@ The largest native win, and the set of things a browser cannot do:
 
 ### Verification state of this section — read first
 
-Spike 2 verified the front half of this flow live against the real deployment
-(2026-09-10) and **could not reach the back half**: the authorization leg lands
-on an interactive Cloudflare Access login page — Google SSO, or a code emailed
-to the user — and no person has signed in yet. **No token has ever been
-issued.** Everything below is labelled accordingly; the labels are not decoration
-and the unverified half is this spec's one Phase 1 gate.
+Spike 2 ran this flow end to end against the real deployment on 2026-09-10,
+including the human sign-in the earlier revision of this section was waiting
+on. **A token was issued, the origin accepted it, the Worker ran, and
+`audit_log` recorded the signed-in user's real SSO address.** This section is
+no longer a gate on Phase 1.
 
-**Established, live-probe-verified:**
+The labels below are still not decoration. One central claim is **inferred, not
+observed**, and several secondary ones remain **unverified** — issuance settled
+them less completely than it looks. Read all three groups rather than the first;
+the third is not a leftovers list.
+
+**Established, live-probe-verified — before the sign-in:**
 
 - **Dynamic Client Registration works unauthenticated.** `POST` to the
   registration endpoint returns `201` with **no `client_secret`** and no
@@ -652,14 +698,55 @@ and the unverified half is this spec's one Phase 1 gate.
   to equal the sign-in address the identity test at the end would have been
   unfalsifiable.
 
-**Not established — no token was issued, so all of this is unconfirmed:** token
-issuance itself; `expires_in` and therefore the assumed lifetime; **the
-`oauth:` prefix**, which appears in the task brief and nowhere in any observed
-response; whether a refresh token is issued (discovery lists `refresh_token`
-under `grant_types_supported`, which is a statement about the grant, not
-evidence one is returned); whether the token endpoint accepts a public client
-presenting only `code_verifier`; **whether Access delivers
-`Cf-Access-Jwt-Assertion` to the origin**; and the `audit_log` identity.
+**Established, live-probe-verified — after the sign-in (2026-09-10):**
+
+- **The token endpoint accepts a public client** presenting `client_id`,
+  `code`, `redirect_uri` and `code_verifier` with no secret. `200`.
+- **`expires_in` is `900`** — exactly the 15-minute `access_token_lifetime` the
+  application is configured for. The number in "Token lifecycle" below is no
+  longer an assumption.
+- **The `oauth:` prefix is real**, and it is on the refresh token as well as
+  the access token. It previously appeared only in the spike brief.
+- **A refresh token is issued.** 71 characters. Discovery listing
+  `refresh_token` under `grant_types_supported` was a statement about the
+  grant; this is the issuance.
+- **The origin accepts the token.** `GET /api/threads` with
+  `Authorization: Bearer <token>` and no cookie returned `200` with the
+  Worker's own JSON body (`{"threads":[]}` — an empty array is a correct
+  response for an account with no threads, and the status is what carries the
+  finding). An Access edge rejection does not look like this.
+- **`audit_log` carries a real identity.** The top `GET /api/threads` `200`
+  rows bear the signed-in user's real SSO address.
+
+**Inferred, not observed — the one claim in this section that is derived rather
+than seen:** that Access delivers `Cf-Access-Jwt-Assertion` to the origin.
+Nothing read the header. The chain is: `200` ⇒ `resolveUserEmail` returned
+non-null (`worker/index.ts:59-62` 401s otherwise) ⇒ with `DEV_USER_EMAIL`
+absent the fallback branch cannot supply a value ⇒ the value came from
+`getUserEmail` (`worker/auth.ts:93-97`), which reads the header at
+`worker/auth.ts:94` and returns null without it, after `RS256` /`iss` /`aud`
+/expiry verification (`worker/auth.ts:48-91`). `API-NOTES.md` labels this
+**mechanism-reasoning** and ranks it below every observed class in that file.
+Read the chain and classify the links yourself rather than taking a tally: most
+of them are readings of Worker source in another repository, at a commit that
+can move, and one — `DEV_USER_EMAIL`'s absence — is a live fact about a
+*mutable* deployment configuration rather than a property of the code. None of
+them is the header. Cite it as inferred.
+
+Note what the `audit_log` row cannot do: Access delivers the same header for a
+cookie-authenticated browser session, and the web app hits the same route, so a
+row with a real email shows *some* request carried a verified assertion, not
+that this one did. The row supplies the identity value; the `200` carries the
+finding.
+
+**Still not established:** the **refresh grant** — a refresh token exists, but
+`grant_type=refresh_token` has never been posted, so acceptance for a public
+client, rotation, and refresh-token lifetime are all unverified (issuance is
+not exercise); **revocation** — the endpoint is advertised and the logout step
+below uses it, but nothing has been posted to it; **the `resource` parameter's
+accepted forms and audience semantics** — see the Flow section; and **scopes** —
+`scopes_supported` is absent from discovery and the token response returned
+`scope: ""`, which establishes only that none was sent and none demanded.
 
 ### Flow
 
@@ -674,23 +761,41 @@ textbook PKCE authorize request — `response_type`, `client_id`, `redirect_uri`
 it redirects straight back with `error=invalid_target`,
 `error_description=No resource parameter found`. Adding
 `&resource=https://maxi.mystuff.website` makes the same request reach the login
-page. *Open:* whether the value must be the origin or may be the fuller resource
-string the RFC 9728 metadata names (`…/api/threads`), and whether the issued
-token is audience-restricted to it. Only the origin form was tried.
+page.
 
-**Unverified, and the core claim of this section:** that Cloudflare resolves the
-token at the edge and forwards `Cf-Access-Jwt-Assertion` to the origin, so
+*Still open, and the sign-in did not close it:* whether the value must be the
+origin or may be the fuller resource string the RFC 9728 metadata names
+(`…/api/threads`), and whether the issued token is audience-restricted to it.
+Only the origin form has ever been sent, and a negative audience test needs a
+second protected resource, which this tenant does not have.
+
+**What the token response did add: it echoes a `resource` field, normalised.**
+The request sent `https://maxi.mystuff.website`; the response returned
+`"https://maxi.mystuff.website/"`. That is evidence the authorization server
+canonicalises a resource to an origin form, and it is not a settlement of
+either half of the open question above — a hint about normalisation is not a
+demonstration that the path-bearing form is rejected. **Concretely, and this is
+an implementation rule rather than an open question: the client must not
+byte-compare the `resource` it sent against the one it gets back.** The two
+differ by a trailing slash on the one path that has actually been run.
+
+**Verified, and the core claim of this section:** that Cloudflare resolves the
+token at the edge and lets the Worker see a real user identity, so
 `worker/auth.ts` is untouched and the audit log at `worker/index.ts:39` keeps
-recording a real email per request. Nothing contradicts it and the design still
-assumes it — but no request carrying a token has ever reached the Worker, so it
-is an assumption, not a finding. See the go/no-go at the top.
+recording a real email per request. A bearer-token `GET /api/threads` returned
+`200` with the Worker's own JSON and produced an `audit_log` row bearing the
+signed-in user's real SSO address. **`worker/auth.ts` was not modified.** The
+delivery of `Cf-Access-Jwt-Assertion` specifically is *inferred* from that
+result rather than observed — see "Verification state" above for the chain, and
+cite it as inferred.
 
-One correction to how that will be tested: an unauthenticated `401` from
-`/api/threads` proves only that **Access enforces at the edge**. It comes from
-Access, not from the Worker, which never runs — so it is not evidence about
-`worker/auth.ts` at all. The conclusive test is an `audit_log` row bearing a
-real email after a successful `GET /api/threads`, which given `DEV_USER_EMAIL`
-is absent can only come from a verified Access JWT.
+One correction to how this was tested, worth keeping: an unauthenticated `401`
+from `/api/threads` proves only that **Access enforces at the edge**. It comes
+from Access, not from the Worker, which never runs — so it is not evidence
+about `worker/auth.ts` at all. What settled it was the `200` from a
+token-bearing, cookie-free request: given `DEV_USER_EMAIL` is absent, the
+Worker cannot return `200` without having resolved an identity from a verified
+Access JWT.
 
 Set `prefersEphemeralWebBrowserSession = true`; a shared Safari cookie can
 otherwise sign in the wrong account silently.
@@ -706,16 +811,22 @@ relay.
 
 ### Token lifecycle
 
-**The lifetime figure is unconfirmed.** The application is configured for a 15
-minute access-token lifetime and this section previously stated 5–15 minutes as
-though observed; `expires_in` has never been seen. Treat "short, refresh on the
-hot path" as the design and the number as unknown until the sign-in closes.
+**The lifetime is confirmed: `expires_in` is `900`.** Fifteen minutes, exactly
+the configured `access_token_lifetime`. This section once stated 5–15 minutes as
+though observed, was corrected to "unknown", and is now a real number. "Short,
+refresh on the hot path" is the right design and the figure to design against
+is 900 seconds — for this deployment's present configuration, which one
+dashboard edit changes.
 
 - Keychain, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` — background sync
   works with the device locked; the token never syncs to another device.
 - Refresh serialized through an actor with **request coalescing**: ten
-  concurrent 401s produce one refresh. Whether there is a refresh token to
-  serialize is itself unconfirmed.
+  concurrent 401s produce one refresh. **There is a refresh token to
+  serialize** — one is issued alongside the access token, 71 characters, with
+  the same `oauth:` prefix. **The refresh grant itself has never been run**, so
+  do not encode assumptions about rotation-on-use or refresh-token lifetime
+  into the actor; let the first real refresh settle those. Issuance is not
+  exercise.
 - **Proactive refresh before opening a chat stream.** A long SSE response that
   401s mid-stream cannot be blindly retried, because tokens are already rendered
   and a retry duplicates them. If expiry is under ~60s, refresh first.
@@ -746,7 +857,9 @@ this and a naive port would not.
 
 Clears the Keychain, revokes the token at the **`revocation_endpoint` the
 discovery document advertises** (confirmed present by spike 2; this section
-previously assumed a revocation path existed), hits `/cdn-cgi/access/logout`,
+previously assumed a revocation path existed — note that nothing has ever been
+*posted* to it, so the endpoint's behaviour is unexercised), hits
+`/cdn-cgi/access/logout`,
 and offers to wipe the local SwiftData store rather than leaving thread history
 on a signed-out device.
 
@@ -772,6 +885,14 @@ neither a secret nor a `[vars]` entry — so the fallback has nothing to fall ba
 *to* today. That is a fact about the deployment's present configuration, not a
 property of the code: one dashboard edit reinstates the hazard silently. The
 code change is still required.
+
+**That absence now carries a second load.** It is one of the links in the
+inference that Access delivers `Cf-Access-Jwt-Assertion` to the origin (see
+"Verification state" above): with nothing to fall back to, a `200` cannot have
+come from the fallback path. So setting `DEV_USER_EMAIL` on this deployment
+would not merely reopen the security hazard — it would retroactively break the
+only evidence Phase 0 has for §4's central claim. If it is ever set, the
+verification has to be redone against a deployment where it is not.
 
 ## 5. Knowledge base, search, and grounding
 
@@ -854,22 +975,24 @@ Drift mitigation, since the contract now spans repos:
   this is a discipline, and the spec says so plainly rather than pretending
   otherwise.
 
-### Phase 0 — verification spikes, no production code — **complete except one
-human sign-in**
+### Phase 0 — verification spikes, no production code — **complete**
 
 | # | Question | Outcome | Where it landed |
 |---|---|---|---|
 | 1 | `LanguageModel` / `LanguageModelExecutor` shape; can it wrap the Worker? | **yes**, probe-verified. `CoreAILanguageModel` does not exist — withdrawn | §2 conformances |
-| 2 | Managed OAuth end to end | **partial** — registration and enforcement verified; token leg blocked on a sign-in | §4, and the Phase 1 gate |
+| 2 | Managed OAuth end to end | **yes** — token issued, origin accepted it, `audit_log` identity real; assertion-header delivery inferred, not observed | §4; no longer a gate |
 | 3 | `contextSize` / `tokenCount(for:)` | **yes**, and the window is runtime-discovered, not 4,096 | Constraints, §2 budget |
 | 4 | FM vision — text-only or multimodal? | **multimodal at the API level**; "assume text-only" falsified | §2 routing, motivation (3) |
 | 5 | `@Generable` extraction vs `parseFactsJson` | **NO-GO**, measured; and the motivating defect never fired | §2 FM jobs; cut from Phase 1 |
 | 6 | PCC third-party availability and limits | **API-level yes**; runtime access unestablished | Constraints, Phase 4 |
 
 The evidence is in `delphi-apple/API-NOTES.md`, one entry per spike, with
-retained control probes and `bin/verify-quotes`. Phase 0's remaining work is one
-person signing in at a Cloudflare Access login page; the procedure is in that
-file under spike 2, "How to finish it".
+retained control probes and `bin/verify-quotes`. **Phase 0 has no remaining
+work**; the sign-in it was waiting on happened on 2026-09-10, and the procedure
+for re-running that flow is in that file under spike 2, "How it was run, and how
+to re-run it". Re-running it costs another human sign-in — there is no
+unattended path to a fresh token, and the refresh grant that might provide one
+has not been exercised.
 
 **Executable spikes Phase 0 could not run**, because `bin/remote-swift` only
 type-checks and no signed device build existed. These are carried, not dropped:
@@ -893,8 +1016,15 @@ found that the silent-parse-failure defect it was meant to fix does not occur.
 Titles remain in scope but are **unmeasured** — no spike tested them — so Phase 1
 should measure titles before shipping them, not after.
 
-**Gated on:** the pending Access sign-in, for the auth portion only. The audio
-stack, sync, rendering and the conformance architecture are unblocked today.
+**Gated on:** nothing. The Access sign-in that gated the auth portion happened
+on 2026-09-10 and §4's central claim holds — `worker/auth.ts` needs no changes.
+The audio stack, sync, rendering and the conformance architecture were never
+gated and remain unblocked.
+
+**One cost to plan for, not a gate.** Exercising anything auth-bearing against
+the real Worker consumes a 15-minute token, and a fresh token needs an
+interactive human sign-in (the refresh grant is issued but unexercised — §2).
+Routine development and CI still run against a mock; batch the end-to-end runs.
 
 **Done when:** every user-visible behavior matches the web app, and `/api/stt`
 and `/api/tts` are never called by the native client.
@@ -1001,14 +1131,29 @@ chat pipeline testable with no network and no model.
 - The spike-5 comparison harness (`delphi-apple/spikes/`, 32 real exchanges) is
   the template for measuring titles in Phase 1, and for re-testing extraction if
   anyone reopens it
+- **At least one end-to-end sync pass against the real Worker**, not only the
+  mock — a real Access token to `/api/threads`, whole-thread `PUT` and `GET`,
+  compared against the web app's behaviour. This became possible on 2026-09-10
+  and it is what turns §1's "provably equivalent" from an aspiration into a
+  test. It costs an interactive sign-in per 15-minute token, so it is a batched
+  manual pass, not a CI job.
 
 ## Risks
 
-- **§4 is unverified, and it is the one Phase 1 gate.** Not "broken" — no
-  contradicting evidence exists — but no token has ever been issued, so the
-  claim that Access delivers `Cf-Access-Jwt-Assertion` to the origin is an
-  assumption. One human sign-in settles it. If it settles the wrong way, §4
-  needs redesign before Phase 1 starts.
+- **§4's assertion-header claim is inferred, not observed.** No longer a gate —
+  the flow ran end to end on 2026-09-10 and the origin accepted the token — but
+  nothing ever read `Cf-Access-Jwt-Assertion`. The claim rests on a chain (§4,
+  "Verification state") built from readings of Worker source at a commit that
+  can move, plus one *mutable* deployment configuration (`DEV_USER_EMAIL`'s
+  absence). The residual risk is that a change to any link
+  invalidates the conclusion silently. Reading the header directly, once a
+  device build can log it, would retire this risk cheaply.
+- **The refresh grant has never been exercised.** A refresh token is issued and
+  its shape is known; `grant_type=refresh_token` has never been posted. §4's
+  refresh actor is therefore built against an unobserved contract for rotation
+  and refresh lifetime, and every fresh token today costs an interactive human
+  sign-in. Exercise it in the first Phase 1 auth task, before the actor's
+  behaviour hardens around a guess.
 - **Runtime facts the SDK cannot supply.** The context window, whether it is a
   total or input-only budget, whether the on-device model declares `.vision`,
   whether PCC works at all on a device, and whether PCC needs an entitlement —
