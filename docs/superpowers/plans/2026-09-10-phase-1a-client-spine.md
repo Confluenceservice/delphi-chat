@@ -138,8 +138,9 @@ responsibility, not by layer.
 | `Sources/DelphiKit/Sync/Reachability.swift` | `ReachabilityProviding` protocol + `NWPathMonitor` implementation |
 | `Sources/DelphiKit/Sync/SyncEngine.swift` | Port of `src/state/sync.ts` as an actor |
 | `Tests/DelphiKitTests/…` | Mirrors the above, one test file per source file |
-| `spikes/fixtures/thread_wire.json` | Real captured `GET /api/threads/:id` body (Task 11) |
-| `spikes/fixtures/chat_stream.sse` | Real captured `/api/chat` SSE transcript (Task 11) |
+| `Sources/LiveE2E/main.swift` | Drives the live Worker through `DelphiKit` (Task 11) |
+| `Tests/DelphiKitTests/Fixtures/thread_wire.json` | Real captured `GET /api/threads/:id` body, a SwiftPM resource (Task 11) |
+| `Tests/DelphiKitTests/Fixtures/chat_stream.sse` | Real captured `/api/chat` SSE transcript (Task 11) |
 
 **Naming note.** `Thread` collides with `Foundation.Thread`. This was probed on
 the build host on 2026-09-10: an unqualified `Thread(id:)` in a test module that
@@ -178,6 +179,16 @@ stop and re-plan — the whole task breakdown assumes this cycle.
 - Produces: `bin/remote-build-ios` — cross-compiles `DelphiKit` for
   `arm64-apple-ios27.0`. Exit 0 on success. **Every later task runs this too**,
   because `swift test` runs on macOS and would not catch a macOS-only import.
+
+**On scoping test runs.** Every task below runs the whole suite, which builds in
+about seven seconds on the build host. That is deliberate: a per-task filter can
+only ever hide a regression another task caused. If you want to scope while
+iterating, `bin/remote-test --filter <SourceFileName>` works — swift-testing
+test IDs embed the source file, so a file name is a valid filter even though
+these tests are free functions — and a filter matching nothing prints
+`warning: No matching test cases were run` rather than passing silently. Both
+behaviours were probed on the build host on 2026-09-10. Never use a filter for a
+task's final gate.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -249,9 +260,20 @@ let package = Package(
     ],
     targets: [
         .target(name: "DelphiKit"),
+        // Task 11 drives the real Worker through this. It must be a real
+        // executable target inside Sources/, because anything under spikes/ is
+        // excluded from the rsync to the build host and invisible to SwiftPM.
+        .executableTarget(name: "live-e2e", dependencies: ["DelphiKit"], path: "Sources/LiveE2E"),
         .testTarget(name: "DelphiKitTests", dependencies: ["DelphiKit"]),
     ],
 )
+EOF
+
+mkdir -p Sources/LiveE2E
+cat > Sources/LiveE2E/main.swift <<'EOF'
+// Placeholder until Task 11 fills this in. An executableTarget with no
+// main.swift fails to build, and every task after this one runs the build.
+print("live-e2e: not implemented until Phase 1A task 11")
 EOF
 
 cat > bin/_remote-sync.sh <<'EOF'
@@ -327,7 +349,7 @@ Expected: `Build complete!` then `OK: DelphiKit builds for arm64-apple-ios27.0`
 ```bash
 cd /Users/thomasb/delphi-apple
 git add Package.swift bin/_remote-sync.sh bin/remote-test bin/remote-build-ios \
-        Sources/DelphiKit/ToolchainCanary.swift \
+        Sources/DelphiKit/ToolchainCanary.swift Sources/LiveE2E/main.swift \
         Tests/DelphiKitTests/ToolchainCanaryTests.swift
 git commit -m "build: DelphiKit package with remote test and iOS build tooling
 
@@ -492,15 +514,22 @@ SHAs in each message, per the two-repo discipline.
 
 ### Task 3: Make the Worker fail closed
 
-**No Swift. Different repo.** `resolveUserEmail` falls back to
-`env.DEV_USER_EMAIL` whenever Access verification returns null, so a missing or
-misconfigured `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` opens all 24 routes to
-an unauthenticated caller. The spec: *"Required change, before any build ships…
-This is not a Phase 2 item."*
+**No Swift. Different repo. No test framework.** `resolveUserEmail` falls back
+to `env.DEV_USER_EMAIL` whenever Access verification returns null, so a missing
+or misconfigured `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` opens all 24 routes
+to an unauthenticated caller. The spec: *"Required change, before any build
+ships… This is not a Phase 2 item."*
 
 `DEV_USER_EMAIL` is currently absent from the deployment, so the hazard is
 latent rather than live — but that is a fact about configuration, not about the
 code, and one dashboard edit reinstates it silently.
+
+**`delphi-chat` has no test runner.** `package.json` declares `dev`, `build`,
+`lint`, `preview` and `deploy`, and there is no vitest or jest configuration
+anywhere in the repo. Standing one up for a single function is out of scope, so
+this task is gated the way that repo already gates Worker behaviour — `wrangler
+dev` plus `curl`, exactly as `docs/superpowers/plans/2026-07-13-durable-conversations-plan.md:94`
+does.
 
 **A second reason to do this early, worth stating in the commit message.** After
 this change the fallback cannot supply an identity **by construction** rather
@@ -510,49 +539,50 @@ is unset.
 
 **Files:**
 - Modify: `worker/auth.ts:100-103` (`resolveUserEmail`)
-- Test: `worker/auth.test.ts` (create if the repo has no test for this module)
+- Modify: `worker/types.ts` — add `ALLOW_DEV_USER?: string` to `Env`
+- Modify: `README.md:231` (the environment table) and `README.md:249` (the local
+  development instructions)
 
 **Interfaces:**
-- Produces: `resolveUserEmail(request, env)` returns the verified email, or
-  `env.DEV_USER_EMAIL` **only when the Access variables are configured absent
-  and the environment opted in**, otherwise `null`. Callers are unchanged:
-  `worker/index.ts:59-62` already 401s on `null`.
+- Produces: `resolveUserEmail(request, env)` returns the Access-verified email;
+  otherwise `env.DEV_USER_EMAIL` **only when `env.ALLOW_DEV_USER === "true"`**;
+  otherwise `null`. Callers are unchanged — `worker/index.ts:59-62` already 401s
+  on `null`.
 
-- [ ] **Step 1: Write the failing test**
+**Why the opt-in is a separate variable rather than a check that Access is
+configured.** Local development runs `wrangler dev`, where Access is *not*
+configured and `CF_ACCESS_*` is legitimately absent — that is precisely when the
+fallback is wanted. Gating on "Access is configured" would therefore break local
+dev entirely. Gating on an explicit `ALLOW_DEV_USER` that only ever appears in
+`.dev.vars` keeps local dev working and cannot be true by accident in
+production.
 
-```ts
-// worker/auth.test.ts
-import { describe, expect, it } from "vitest";
-import { resolveUserEmail } from "./auth";
+- [ ] **Step 1: Write the failing check**
 
-const noJwt = new Request("https://example.test/api/threads");
+The check is a request that must be refused. With `DEV_USER_EMAIL` set and
+`ALLOW_DEV_USER` unset, an unauthenticated call must 401 — today it returns 200,
+which is the vulnerability.
 
-describe("resolveUserEmail fails closed", () => {
-  it("returns null when Access vars are missing, even if DEV_USER_EMAIL is set", async () => {
-    const env = {
-      DEV_USER_EMAIL: "someone@example.com",
-      // CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD deliberately absent
-    } as never;
-    expect(await resolveUserEmail(noJwt, env)).toBeNull();
-  });
-
-  it("still allows the dev fallback when Access is configured and dev mode is explicit", async () => {
-    const env = {
-      DEV_USER_EMAIL: "someone@example.com",
-      CF_ACCESS_TEAM_DOMAIN: "itdocsnow.cloudflareaccess.com",
-      CF_ACCESS_AUD: "aud-value",
-      ALLOW_DEV_USER: "true",
-    } as never;
-    expect(await resolveUserEmail(noJwt, env)).toBe("someone@example.com");
-  });
-});
+```bash
+cd /Users/thomasb/delphi-chat
+cp .dev.vars .dev.vars.backup 2>/dev/null || true
+cat > .dev.vars <<'EOF'
+DEV_USER_EMAIL=someone@example.com
+EOF
+npx wrangler dev --port 8787 &
+WRANGLER_PID=$!
+sleep 6
+curl -s -o /dev/null -w 'unauthenticated GET /api/threads -> %{http_code}\n' \
+  http://127.0.0.1:8787/api/threads
 ```
 
 - [ ] **Step 2: Run it to make sure it fails**
 
-Run: `cd /Users/thomasb/delphi-chat && npx vitest run worker/auth.test.ts`
-Expected: FAIL on the first case — it returns `"someone@example.com"` because
-today's fallback is unconditional.
+Expected **before** the fix: `unauthenticated GET /api/threads -> 200`.
+
+That 200 *is* the bug: no Access header was sent, no Access variable is
+configured, and the Worker served the route anyway as
+`someone@example.com`. Leave `wrangler dev` running for Step 4.
 
 - [ ] **Step 3: Write the minimal implementation**
 
@@ -563,41 +593,84 @@ export async function resolveUserEmail(request: Request, env: Env): Promise<stri
   const verified = await getUserEmail(request, env);
   if (verified) return verified;
 
-  // Fail closed. The dev fallback is only reachable when Access is fully
-  // configured AND the environment opts in explicitly, so a missing or
-  // misconfigured CF_ACCESS_* pair returns 401 rather than opening all 24
-  // routes to an unauthenticated caller.
-  const accessConfigured = Boolean(env.CF_ACCESS_TEAM_DOMAIN && env.CF_ACCESS_AUD);
-  if (!accessConfigured) return null;
+  // Fail closed. The dev fallback requires an explicit opt-in that only ever
+  // lives in .dev.vars, so a missing or misconfigured CF_ACCESS_* pair returns
+  // 401 instead of opening all 24 routes to an unauthenticated caller.
   if (env.ALLOW_DEV_USER !== "true") return null;
 
   return env.DEV_USER_EMAIL || null;
 }
 ```
 
-Add `ALLOW_DEV_USER?: string` to `Env` in `worker/types.ts`.
+Add to `Env` in `worker/types.ts`:
 
-- [ ] **Step 4: Run the tests and make sure they pass**
+```ts
+  /** Local development only. Must never be set on a deployed environment. */
+  ALLOW_DEV_USER?: string;
+```
 
-Run: `cd /Users/thomasb/delphi-chat && npx vitest run worker/auth.test.ts`
-Expected: PASS, both cases.
+- [ ] **Step 4: Run the check and make sure it passes**
 
-- [ ] **Step 5: Commit**
+```bash
+# Same .dev.vars as Step 1 — DEV_USER_EMAIL set, ALLOW_DEV_USER absent.
+curl -s -o /dev/null -w 'no opt-in  -> %{http_code}\n' \
+  http://127.0.0.1:8787/api/threads
+
+kill $WRANGLER_PID
+cat > .dev.vars <<'EOF'
+DEV_USER_EMAIL=someone@example.com
+ALLOW_DEV_USER=true
+EOF
+npx wrangler dev --port 8787 &
+WRANGLER_PID=$!
+sleep 6
+curl -s -o /dev/null -w 'with opt-in -> %{http_code}\n' \
+  http://127.0.0.1:8787/api/threads
+kill $WRANGLER_PID
+mv .dev.vars.backup .dev.vars 2>/dev/null || rm -f .dev.vars
+```
+
+Expected:
+```
+no opt-in  -> 401
+with opt-in -> 200
+```
+
+The first line is the security fix. The second proves local development still
+works, which is the whole reason the opt-in is a separate variable.
+
+- [ ] **Step 5: Update the README and commit**
+
+Two places document the old behaviour and would now be wrong. At
+`README.md:231` the environment table gains a row, and at `README.md:249` the
+local-development instructions gain the second variable:
+
+```
+| `ALLOW_DEV_USER` | `.dev.vars` | local only | Must be `"true"` for `DEV_USER_EMAIL` to be honoured. Never set it on a deployed environment — it re-opens every route to unauthenticated callers |
+```
+
+and
+
+```
+CF Access is not available in `wrangler dev`. Set `DEV_USER_EMAIL=you@example.com`
+**and** `ALLOW_DEV_USER=true` in `.dev.vars`. Without the second variable the
+Worker fails closed and every `/api/*` route returns 401.
+```
 
 ```bash
 cd /Users/thomasb/delphi-chat
-git add worker/auth.ts worker/types.ts worker/auth.test.ts
-git commit -m "fix(auth): fail closed when Access vars are missing
+git add worker/auth.ts worker/types.ts README.md
+git commit -m "fix(auth): fail closed when Access verification returns null
 
-resolveUserEmail fell back to DEV_USER_EMAIL whenever Access verification
-returned null, so an unset CF_ACCESS_TEAM_DOMAIN or CF_ACCESS_AUD opened all 24
-routes. The fallback now requires Access to be configured and ALLOW_DEV_USER to
-be set explicitly.
+resolveUserEmail fell back to DEV_USER_EMAIL unconditionally, so an unset or
+misconfigured CF_ACCESS_TEAM_DOMAIN or CF_ACCESS_AUD opened all 24 routes to an
+unauthenticated caller. The fallback now requires an explicit ALLOW_DEV_USER
+opt-in that only ever lives in .dev.vars.
 
 Required by the Swift native client design before any build ships. It also
 hardens spec §4's assertion-header inference: the fallback can no longer supply
 an identity by construction, where previously that rested on the mutable fact
-that DEV_USER_EMAIL is unset on the deployment."
+that DEV_USER_EMAIL happens to be unset on the deployment."
 ```
 
 ---
@@ -722,7 +795,7 @@ private let sampleThreadJSON = """
 
 - [ ] **Step 2: Run it to make sure it fails**
 
-Run: `bin/remote-test --filter WireTypesTests`
+Run: `bin/remote-test`
 Expected: FAIL — `cannot find 'Wire' in scope`, `cannot find type 'Thread'`.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -871,7 +944,7 @@ public enum Wire {
 
 - [ ] **Step 4: Run the tests and make sure they pass**
 
-Run: `bin/remote-test --filter WireTypesTests`
+Run: `bin/remote-test`
 Expected: PASS, four tests.
 
 Run: `bin/remote-build-ios`
@@ -1022,7 +1095,7 @@ private func sampleThread(id: String = "t1", title: String = "Hello") -> Thread 
 
 - [ ] **Step 2: Run it to make sure it fails**
 
-Run: `bin/remote-test --filter ThreadStoreTests`
+Run: `bin/remote-test`
 Expected: FAIL — `cannot find 'ThreadStore' in scope`.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -1475,7 +1548,7 @@ private final class Counter: @unchecked Sendable {
 
 - [ ] **Step 2: Run it to make sure it fails**
 
-Run: `bin/remote-test --filter APIClientTests`
+Run: `bin/remote-test`
 Expected: FAIL — `cannot find 'APIClient' in scope`.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -1540,6 +1613,7 @@ public final class MockTransport: HTTPTransport, @unchecked Sendable {
         case data(status: Int, body: Data)
         case stream(status: Int, chunks: [Data])
         case failure(any Error)
+        case blocking(status: Int, body: Data, gate: RequestGate)
     }
 
     private let lock = NSLock()
@@ -1568,6 +1642,13 @@ public final class MockTransport: HTTPTransport, @unchecked Sendable {
         queue.append(.failure(error))
     }
 
+    /// Parks the request inside the transport until the gate is released, so a
+    /// test can observe what happens while a call is genuinely in flight.
+    public func enqueueBlocking(status: Int, body: Data, gate: RequestGate) {
+        lock.lock(); defer { lock.unlock() }
+        queue.append(.blocking(status: status, body: body, gate: gate))
+    }
+
     private func next(for request: URLRequest) throws -> Response {
         lock.lock(); defer { lock.unlock() }
         requests.append(request)
@@ -1594,6 +1675,10 @@ public final class MockTransport: HTTPTransport, @unchecked Sendable {
             return (chunks.reduce(into: Data()) { $0 += $1 }, http(request, status))
         case let .failure(error):
             throw error
+        case let .blocking(status, body, gate):
+            await gate.requestArrived()
+            await gate.waitForRelease()
+            return (body, http(request, status))
         }
     }
 
@@ -1615,7 +1700,49 @@ public final class MockTransport: HTTPTransport, @unchecked Sendable {
             return (stream, http(request, status))
         case let .failure(error):
             throw error
+        case let .blocking(status, body, gate):
+            await gate.requestArrived()
+            await gate.waitForRelease()
+            let stream = AsyncThrowingStream<Data, any Error> { continuation in
+                continuation.yield(body)
+                continuation.finish()
+            }
+            return (stream, http(request, status))
         }
+    }
+}
+
+/// Lets a test park a request inside the transport and release it on demand.
+/// Ships in the library rather than the test target because `MockTransport`
+/// does, and the two are only useful together.
+public actor RequestGate {
+    private var arrived: CheckedContinuation<Void, Never>?
+    private var released: CheckedContinuation<Void, Never>?
+    private var hasArrived = false
+    private var isReleased = false
+
+    public init() {}
+
+    func requestArrived() {
+        hasArrived = true
+        arrived?.resume()
+        arrived = nil
+    }
+
+    public func waitUntilRequestArrived() async {
+        if hasArrived { return }
+        await withCheckedContinuation { arrived = $0 }
+    }
+
+    func waitForRelease() async {
+        if isReleased { return }
+        await withCheckedContinuation { released = $0 }
+    }
+
+    public func release() {
+        isReleased = true
+        released?.resume()
+        released = nil
     }
 }
 ```
@@ -1768,7 +1895,7 @@ public struct APIClient: Sendable {
 
 - [ ] **Step 4: Run the tests and make sure they pass**
 
-Run: `bin/remote-test --filter APIClientTests` then `bin/remote-build-ios`
+Run: `bin/remote-test` then `bin/remote-build-ios`
 Expected: PASS, eight tests, and a clean iOS build.
 
 - [ ] **Step 5: Commit**
@@ -1907,7 +2034,7 @@ private func makeAPI(_ transport: MockTransport) -> ThreadsAPI {
 
 - [ ] **Step 2: Run it to make sure it fails**
 
-Run: `bin/remote-test --filter ThreadsAPITests`
+Run: `bin/remote-test`
 Expected: FAIL — `cannot find 'ThreadsAPI' in scope`.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -2025,7 +2152,7 @@ extension CharacterSet {
 
 - [ ] **Step 4: Run the tests and make sure they pass**
 
-Run: `bin/remote-test --filter ThreadsAPITests` then `bin/remote-build-ios`
+Run: `bin/remote-test` then `bin/remote-build-ios`
 Expected: PASS, eight tests.
 
 - [ ] **Step 5: Commit**
@@ -2103,7 +2230,7 @@ import Testing
 }
 
 @Test func matchingIsNonGreedySoTwoBlocksDoNotCollapseIntoOne() {
-    #expect(stripThinking("<think>a</think>KEEP<think>b</think>") == "KEEPKEEP".replacingOccurrences(of: "KEEPKEEP", with: "KEEP"))
+    #expect(stripThinking("<think>a</think>KEEP<think>b</think>") == "KEEP")
 }
 
 /// The reason this is a whole-buffer function rather than a per-chunk one.
@@ -2129,7 +2256,7 @@ import Testing
 
 - [ ] **Step 2: Run it to make sure it fails**
 
-Run: `bin/remote-test --filter ThinkingTests`
+Run: `bin/remote-test`
 Expected: FAIL — `cannot find 'stripThinking' in scope`.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -2173,7 +2300,7 @@ public struct ThinkingAccumulator: Sendable {
 
 - [ ] **Step 4: Run the tests and make sure they pass**
 
-Run: `bin/remote-test --filter ThinkingTests` then `bin/remote-build-ios`
+Run: `bin/remote-test` then `bin/remote-build-ios`
 Expected: PASS, nine tests.
 
 - [ ] **Step 5: Commit**
@@ -2380,8 +2507,7 @@ private func collect(chunks: [String]) async throws -> [ChatEvent] {
 
 - [ ] **Step 2: Run it to make sure it fails**
 
-Run: `bin/remote-test --filter SSELineParserTests` and
-`bin/remote-test --filter ChatStreamTests`
+Run: `bin/remote-test`
 Expected: FAIL — `cannot find 'SSELineParser' in scope`.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -2618,8 +2744,7 @@ private struct DeltaEnvelope: Decodable {
 
 - [ ] **Step 4: Run the tests and make sure they pass**
 
-Run: `bin/remote-test --filter SSELineParserTests`, then
-`bin/remote-test --filter ChatStreamTests`, then `bin/remote-build-ios`
+Run: `bin/remote-test` then `bin/remote-build-ios`
 Expected: PASS, twelve tests total.
 
 - [ ] **Step 5: Commit**
@@ -2825,17 +2950,29 @@ private func sample(_ id: String, updatedAt: Int = 100) -> Thread {
     #expect(h.persistence.loadDeletes().isEmpty)
 }
 
-/// sync.ts:63-65 — the reentrancy guard. A second flush during the first is a
-/// no-op rather than a duplicate PUT.
-@Test @MainActor func concurrentFlushesDoNotDuplicateRequests() async throws {
+/// sync.ts:63-65 — the reentrancy guard. A second flush *while the first is
+/// still in flight* is a no-op rather than a duplicate PUT.
+///
+/// Two `async let` calls would not test this: the second may simply land after
+/// the first finished, at which point `dirty` is empty and the assertion holds
+/// whether or not the guard exists. The transport therefore parks inside the
+/// PUT until the test releases it, so the second `flush()` provably arrives
+/// while `t1` is still dirty. This is the port's only concurrency invariant.
+@Test @MainActor func aFlushDuringAnInFlightFlushIsANoOp() async throws {
     let h = try makeHarness()
     try h.store.upsert(sample("t1"))
-    h.transport.enqueue(status: 200, body: Data(#"{"ok":true}"#.utf8))
+
+    let gate = RequestGate()
+    h.transport.enqueueBlocking(status: 200, body: Data(#"{"ok":true}"#.utf8), gate: gate)
 
     await h.engine.markDirty("t1")
-    async let first: Void = h.engine.flush()
-    async let second: Void = h.engine.flush()
-    _ = await (first, second)
+    let first = Task { await h.engine.flush() }
+    await gate.waitUntilRequestArrived()
+
+    // The first flush is parked inside the transport, t1 still dirty.
+    await h.engine.flush()
+    await gate.release()
+    await first.value
 
     #expect(h.transport.recordedRequests.filter { $0.httpMethod == "PUT" }.count == 1)
 }
@@ -2981,7 +3118,7 @@ private final class InMemorySyncPersistence: SyncPersistence, @unchecked Sendabl
 
 - [ ] **Step 2: Run it to make sure it fails**
 
-Run: `bin/remote-test --filter SyncEngineTests`
+Run: `bin/remote-test`
 Expected: FAIL — `cannot find 'SyncEngine' in scope`.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -3263,8 +3400,7 @@ public extension ThreadStore {
 
 - [ ] **Step 4: Run the tests and make sure they pass**
 
-Run: `bin/remote-test --filter SyncEngineTests` then `bin/remote-test` then
-`bin/remote-build-ios`
+Run: `bin/remote-test` then `bin/remote-build-ios`
 Expected: PASS — fifteen sync tests and the whole suite green.
 
 - [ ] **Step 5: Commit**
@@ -3308,27 +3444,37 @@ nothing in it is mocked.
   `PUT` over a real thread.
 
 **Files:**
-- Create: `spikes/e2e/live_thread_roundtrip.swift`
-- Create: `spikes/fixtures/thread_wire.json` — a real captured `GET` body
-- Create: `spikes/fixtures/chat_stream.sse` — a real captured SSE transcript
+- Modify: `Sources/LiveE2E/main.swift` — replaces the Task 1 placeholder
+- Modify: `Package.swift` — the test target gains `resources: [.copy("Fixtures")]`
+- Create: `Tests/DelphiKitTests/Fixtures/thread_wire.json` — a real captured `GET` body
+- Create: `Tests/DelphiKitTests/Fixtures/chat_stream.sse` — a real captured SSE transcript
 - Modify: `API-NOTES.md` — new entry, `### Phase 1A — the ported client against
   the live Worker`
 - Test: `Tests/DelphiKitTests/LiveFixtureTests.swift`
 
+**Why the fixtures live under `Tests/` and not under `spikes/`.**
+`bin/_remote-sync.sh` excludes `spikes/`, so anything there never reaches the
+build host and a `#filePath`-relative lookup would resolve to a path that does
+not exist. As SwiftPM resources they are copied into the test bundle and read
+through `Bundle.module`, which makes the replay hermetic. Both the resource
+lookup and the executable target were probed on the build host on 2026-09-10.
+
 **Interfaces:**
-- Produces: `spikes/fixtures/thread_wire.json`, replayed by
+- Produces: `Tests/DelphiKitTests/Fixtures/thread_wire.json`, replayed by
   `LiveFixtureTests` forever after, so the wire shape stays pinned by real bytes
   rather than by bytes this plan invented.
 
 - [ ] **Step 1: Write the live exercise**
 
-A single-file Swift script that drives `DelphiKit` against the real origin.
+Replace the Task 1 placeholder. The file must be named `main.swift` — top-level
+statements are only allowed there — and the target is run with
+`swift run live-e2e`.
 
 ```swift
-// spikes/e2e/live_thread_roundtrip.swift
-// THROWAWAY — Phase 1A task 11. Drives DelphiKit against the live Worker with a
-// real Access token. Run on the build host; needs ACCESS_TOKEN in the
-// environment. Never commit the token.
+// Sources/LiveE2E/main.swift
+// Phase 1A task 11. Drives DelphiKit against the live Worker with a real Access
+// token. Run on the build host; needs ACCESS_TOKEN in the environment. Never
+// commit the token.
 //
 // Writes and then deletes ONE throwaway thread. It never touches a real one.
 import Foundation
@@ -3338,7 +3484,9 @@ let token = ProcessInfo.processInfo.environment["ACCESS_TOKEN"]!
 let origin = URL(string: "https://maxi.mystuff.website")!
 let threadID = "e2e-\(UUID().uuidString)"
 
-let connection = await ConnectionStore()
+// Top-level code in main.swift is already main-actor isolated, and
+// ConnectionStore's init is @MainActor rather than async — so no `await` here.
+let connection = ConnectionStore()
 let client = APIClient(
     baseURL: origin,
     transport: URLSessionTransport(),
@@ -3382,7 +3530,7 @@ if fetched != thread {
 let (raw, _) = try await client.send(
     client.request("GET", "/api/threads/\(threadID)", body: nil),
 )
-try raw.write(to: URL(fileURLWithPath: "spikes/fixtures/thread_wire.json"))
+try raw.write(to: URL(fileURLWithPath: "Tests/DelphiKitTests/Fixtures/thread_wire.json"))
 print("captured \(raw.count) bytes of real wire JSON")
 
 // 5. DELETE, and confirm it is gone.
@@ -3393,13 +3541,32 @@ print("DELETE ok; thread present after delete: \(after.contains { $0.id == threa
 
 - [ ] **Step 2: Run it against the live deployment**
 
+First declare the fixtures directory as a resource, or the build fails once the
+replay test lands. In `Package.swift`:
+
+```swift
+        .testTarget(
+            name: "DelphiKitTests",
+            dependencies: ["DelphiKit"],
+            resources: [.copy("Fixtures")],
+        ),
+```
+
 ```bash
 cd /Users/thomasb/delphi-apple
+mkdir -p Tests/DelphiKitTests/Fixtures
 # Obtain a token first — refresh.sh if task 2 showed the grant works, otherwise
 # authorize-url.sh + exchange.sh with an interactive sign-in.
 source .env.local
-ACCESS_TOKEN="$ACCESS_TOKEN" swift run --package-path . live_thread_roundtrip
+# This one runs LOCALLY, not through bin/remote-test: it needs the live token
+# and outbound network, and it writes the fixtures into the working tree.
+ACCESS_TOKEN="$ACCESS_TOKEN" swift run live-e2e
 ```
+
+The local machine has no iOS SDK but `swift run` here targets macOS only, so it
+builds locally. If the local toolchain refuses, rsync the tree to the build host
+and run it there instead — the token travels in the environment, never in a
+file.
 
 Expected: every line prints `ok`, `ROUND-TRIP IDENTICAL: true`, and
 `thread present after delete: false`.
@@ -3417,7 +3584,7 @@ curl -N -X POST "https://maxi.mystuff.website/api/chat" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"model":"MiniMax-M3","messages":[{"role":"user","content":"Say hello in five words."}],"memory":false,"mode":"answer"}' \
-  | tee spikes/fixtures/chat_stream.sse
+  | tee Tests/DelphiKitTests/Fixtures/chat_stream.sse
 ```
 
 Review the captured file before committing it: it contains a real model reply
@@ -3433,20 +3600,22 @@ import Foundation
 import Testing
 @testable import DelphiKit
 
-/// Replays bytes captured from the live Worker on 2026-09-10, so the wire
-/// contract is pinned by real bytes rather than by bytes this test invented.
-/// The fixtures are committed; these tests need no network.
-private func fixture(_ name: String) throws -> Data {
-    let url = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .appending(path: "spikes/fixtures/\(name)")
+/// Replays bytes captured from the live Worker, so the wire contract is pinned
+/// by real bytes rather than by bytes this test invented. The fixtures are
+/// committed as SwiftPM resources; these tests need no network.
+private struct MissingFixture: Error { let name: String }
+
+private func fixture(_ name: String, _ ext: String) throws -> Data {
+    // A plain throw rather than `#require`: this is a helper outside any test
+    // body, and a thrown error fails the calling test just as clearly.
+    guard let url = Bundle.module.url(forResource: "Fixtures/\(name)", withExtension: ext) else {
+        throw MissingFixture(name: "\(name).\(ext)")
+    }
     return try Data(contentsOf: url)
 }
 
 @Test func decodesTheRealThreadBodyAndReEncodesItIdentically() throws {
-    let raw = try fixture("thread_wire.json")
+    let raw = try fixture("thread_wire", "json")
     let thread = try Wire.decoder.decode(Thread.self, from: raw)
     let reEncoded = try Wire.encoder.encode(thread)
 
@@ -3458,7 +3627,7 @@ private func fixture(_ name: String) throws -> Data {
 }
 
 @Test @MainActor func replaysTheRealSSETranscript() async throws {
-    let raw = try fixture("chat_stream.sse")
+    let raw = try fixture("chat_stream", "sse")
     let transport = MockTransport()
     // Feed it in small chunks to exercise the split-boundary path.
     let chunks = stride(from: 0, to: raw.count, by: 17).map { offset in
@@ -3494,7 +3663,7 @@ private func fixture(_ name: String) throws -> Data {
 }
 ```
 
-Run: `bin/remote-test --filter LiveFixtureTests`
+Run: `bin/remote-test`
 Expected: PASS, both tests.
 
 - [ ] **Step 5: Record the finding and commit**
@@ -3519,7 +3688,9 @@ one account.
 
 ```bash
 cd /Users/thomasb/delphi-apple
-git add spikes/e2e spikes/fixtures/thread_wire.json spikes/fixtures/chat_stream.sse \
+git add Package.swift Sources/LiveE2E/main.swift \
+        Tests/DelphiKitTests/Fixtures/thread_wire.json \
+        Tests/DelphiKitTests/Fixtures/chat_stream.sse \
         Tests/DelphiKitTests/LiveFixtureTests.swift API-NOTES.md
 git commit -m "test(e2e): prove the ported client against the live Worker
 
@@ -3541,10 +3712,6 @@ sync is correct."
 - [ ] The refresh grant has been **posted**, not merely issued, and the outcome
       is recorded in `API-NOTES.md` under Spike 2.
 - [ ] `resolveUserEmail` fails closed, with a test, committed in `delphi-chat`.
-- [ ] The DCR per-install-versus-per-user question is answered **in writing** in
-      spec §4, or Logout is explicitly deferred to 1B with that question named as
-      its entry criterion. Per-install registration must not ship before it is
-      answered.
 - [ ] One end-to-end pass against the real Worker has run, and its fixtures are
       committed and replayed by a test.
 - [ ] No `FoundationModels` import exists anywhere in `DelphiKit`.
@@ -3558,11 +3725,15 @@ are plans 1B, 1C and 1D.
 
 Three things surfaced while planning 1A that 1B owns:
 
-1. **The DCR orphan problem is growing.** Two undeletable client registrations
-   exist on the Access tenant, and each `register-client.sh` run leaves another.
-   The `revocation_endpoint` revokes *tokens*, not *registrations*. 1B must
-   decide per-install versus per-user registration before Logout ships, because
-   per-install means unbounded accumulation with no cleanup story.
+1. **The DCR orphan problem is growing, and it is 1B's entry criterion.** Two
+   undeletable client registrations exist on the Access tenant, and each
+   `register-client.sh` run leaves another — including any run this plan's Task
+   2 or Task 11 triggers. The `revocation_endpoint` revokes *tokens*, not
+   *registrations*. **1B must answer per-install versus per-user registration in
+   writing, in spec §4, before it writes any registration code**, because
+   per-install means unbounded accumulation with no cleanup story and the spec
+   makes this a gate on the Logout section. It is deliberately not in 1A's
+   definition of done: 1A registers no clients.
 2. **The Keychain cannot be tested headlessly the way everything else in 1A
    can.** A `swift test` process on the build host has no entitlement, so
    data-protection Keychain calls are expected to fail there. Put the real
