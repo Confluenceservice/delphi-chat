@@ -549,6 +549,59 @@ git push
 
 ---
 
+### Task 4b: `bin/verify-quotes` — mechanical quote verification
+
+Added mid-plan. Six quote-integrity defects were found across two entries of
+`API-NOTES.md`; four surfaced by accident while someone was reading for something
+else, and five sat in an entry that had already passed four fix rounds and a
+fabricated-quote correction. Review reads for whether a claim is *right*; these
+were failures of whether a quote is *faithful*. Different reads, and the second
+one does not happen reliably by hand.
+
+Four spikes remain, each adding quoted diagnostics. This makes verification
+mechanical before they do.
+
+**Files:**
+- Create: `/Users/thomasb/delphi-apple/bin/verify-quotes`
+- Modify: `/Users/thomasb/delphi-apple/API-NOTES.md` (block markers only)
+
+**Interfaces:**
+- Consumes: `bin/remote-swift`, and the seven control probes at `spikes/controls/`.
+- Produces: `bin/verify-quotes` — exit 0 when every mechanically-checkable quoted
+  block in `API-NOTES.md` matches its source; non-zero listing each drift.
+
+- [ ] **Step 1: Write the failing test**
+
+Deliberately corrupt one character inside one quoted diagnostic block in a scratch
+copy of `API-NOTES.md`. That corrupted copy is the fixture the verifier must reject.
+
+- [ ] **Step 2: Run it to make sure it fails**
+
+`bin/verify-quotes` does not exist. Expected: `No such file or directory`.
+
+- [ ] **Step 3: Implement**
+
+Associate each quoted diagnostic block with the control probe that produced it —
+an explicit marker adjacent to the block is better than inference. For each, re-run
+`bin/remote-swift` against the committed control and diff its real output against
+the block. Report every drift with a file:line anchor. Interface quotes and
+composed renderings are **not** mechanically checkable; the script must list them
+as unchecked rather than silently pass them, so the unchecked set stays visible.
+
+- [ ] **Step 4: Run and verify**
+
+The corrupted fixture must be rejected with a non-zero exit naming the drifted
+block; the real `API-NOTES.md` must pass; the unchecked set must be listed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add bin/verify-quotes API-NOTES.md
+git commit -m "tools: add bin/verify-quotes for mechanical quote verification"
+```
+
+---
+
 ### Task 5: Spike 4 — vision support
 
 Spec §2 routes every image turn to the Worker on the assumption that Foundation
