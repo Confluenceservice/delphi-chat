@@ -65,7 +65,9 @@ Access middleware in `worker/index.ts`.
 - **Private Cloud Compute runs Apple's models only.** Third-party providers
   conform to `LanguageModel` and run on their own infrastructure. PCC is not a
   hosting option for someone else's model. ⚠️ PCC's availability and limits for
-  third-party apps are contradicted across sources — see Phase 4.
+  third-party apps are contradicted across sources — but `PrivateCloudCompute*`
+  symbols **are present in the iOS 27 SDK** (preliminary Phase 0 finding), so
+  spike 6 may promote PCC out of Phase 4. See Phase 4.
 
 ## Architecture
 
@@ -164,10 +166,18 @@ The Worker is wrapped as a `LanguageModel` conformance so all engines are driven
 through one `LanguageModelSession`. Streaming, prompt assembly, and cancellation
 are written once, and Phase 4 becomes a new conformance rather than a rewrite.
 
-⚠️ Phase 0 must confirm the `LanguageModel` / `LanguageModelExecutor` protocol
-shape, and whether `CoreAILanguageModel` is the intended first-party way to wrap
-an owned HTTP backend. If the protocol is unusable for this, fall back to a
-plain Swift protocol with the same three conformances; nothing else changes.
+**Preliminary Phase 0 finding (2026-09-09)**, from the real iOS 27 SDK on
+`mac-mini.local` via `swift-api-digester`: `LanguageModel` and
+`LanguageModelExecutor` both exist, as do `contextSize`, `tokenCount`,
+`Generable`, and `Tool`. `CoreAI*` does **not** appear in `FoundationModels` —
+an earlier claim that `CoreAILanguageModel` could wrap an owned HTTP backend was
+wrong and is withdrawn. The Worker conformance is hand-rolled against
+`LanguageModel`.
+
+⚠️ Symbol existence is not signature verification. Spike 1 must still extract the
+actual protocol requirements before code depends on them. If the protocol proves
+unusable for wrapping an HTTP backend, fall back to a plain Swift protocol with
+the same conformances; nothing else in this design changes.
 
 ### Two prompt builders
 
@@ -375,8 +385,18 @@ retrieval implementations are acceptable, and it is optional.
 
 ## 6. Phasing
 
-Repo layout: same repo, new `apple/` directory. The API contract, the specs, and
-the Worker move together; a separate repo would let the contract drift.
+Repo layout: **two repos.** The Swift client lives in
+`Confluenceservice/delphi-apple` (private); the Worker, web app, specs, and plans
+stay in `Confluenceservice/delphi-chat` (public).
+
+Drift mitigation, since the contract now spans repos:
+- Specs and plans have one home: `delphi-chat/docs/superpowers/`. The Swift repo
+  never forks them; its README links to them by path and commit.
+- `delphi-apple/API-NOTES.md` records verified Apple API signatures (Phase 0).
+- Any change to an `/api/*` request or response shape requires a matching commit
+  in both repos, referenced by SHA in the message. There is no schema generator;
+  this is a discipline, and the spec says so plainly rather than pretending
+  otherwise.
 
 ### Phase 0 — verification spikes, no production code
 
