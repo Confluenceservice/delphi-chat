@@ -46,9 +46,18 @@ The evidence is recorded in `Confluenceservice/delphi-apple`, file
 `API-NOTES.md`, one entry per spike, with retained control probes and a
 mechanical quote verifier (`bin/verify-quotes`). That file is the authority;
 this section summarises it and this spec has been rewritten to match it.
-**No unverified-claim markers remain — the spec carried eleven before this
-reconciliation, and every claim below is either established, explicitly not
-established, or falsified and rewritten.**
+**No unverified-claim markers remain.** The spec carried **nine** marked
+claims before this reconciliation. Eleven is the raw ⚠️ glyph count and is the
+wrong number: one glyph was the legend sentence explaining what the marker
+meant, and one was the spec's own self-tally, which said six and was also
+wrong. Nine is the count of substantive marked claims. Every claim below is now
+either established, explicitly not established, or falsified and rewritten.
+(Derive it rather than trusting this sentence — `git show 251ac80:docs/superpowers/specs/2026-09-09-swift-native-client-design.md | grep -n '⚠️'`
+prints the ten marked *lines*; one of them carries two markers, giving eleven
+glyphs, and two of those eleven are the legend and the self-tally. Read the
+lines and classify them yourself rather than taking any of these four numbers
+on trust — the reason this sentence needed fixing is that a glyph count was
+reported as a claim count.)
 
 | Spike | Question | Outcome |
 |---|---|---|
@@ -85,8 +94,22 @@ nothing observed so far excludes it either.
 
 **Not gated on the sign-in, and startable today:** the `LanguageModel`
 conformance architecture (§2, spike 1), the native audio stack (§3, untouched
-by any spike), SwiftData and the ported sync semantics (§1), and
-`swift-markdown-ui` rendering (§5).
+by any spike), and `swift-markdown-ui` rendering (§5). None of these crosses an
+Access-protected route, so none of them waits on anything.
+
+**Startable today, but only against a mock — explicitly not end to end:**
+SwiftData and the ported sync semantics (§1). This was previously listed as
+flatly startable, which reads as "can be finished today". It cannot. The
+SwiftData `@Model` classes, the dirty set, the 2s debounce and the
+`pending`/`synced`/`error` state machine are all writable now and depend on no
+Phase 0 result. What they sync *through* does: §1's Phase 1 semantics are
+whole-thread `PUT` and `GET` against `/api/threads`, which sits behind the same
+Access application as every other route. Until the gate below closes this work
+can be written and unit-tested against a mock transport, and **cannot be
+exercised against the real Worker at all**. Treat "sync is correct" as unproven
+until a real token has reached the origin: before that, a port bug and a
+mock-fidelity bug are indistinguishable — which is exactly the confusion §1's
+"provably equivalent to the web app" requirement exists to prevent.
 
 **Removed from Phase 1 scope on measured evidence:** moving memory extraction
 on-device (§2, spike 5). Extraction stays server-side. This is a scope
@@ -102,6 +125,41 @@ Phase 1 sends every chat turn to the Worker.
 entitlement or provisioning-profile capability (not expressible in a
 `.swiftinterface`); PCC's context window, quota size and cadence, and which
 error vocabulary it throws.
+
+### Carried-over items, with an owner each
+
+Two things came out of Phase 0 owned by nobody, each recorded somewhere a
+Phase 1 reader would not open. Both are restated here, in the file Phase 1 does
+read, with a named owner and a definition of done.
+
+**1. Two orphaned Dynamic Client Registration records on the Access tenant.**
+Spike 2 registered two DCR clients and there is no known way to remove them:
+the `revocation_endpoint` that discovery advertises revokes *tokens*, not
+*registrations*.
+*Owner:* the Cloudflare Access tenant operator — the same person, and the same
+console session, as the sign-in that closes the gate above, so it costs nothing
+extra to do it then.
+*Done when:* §4's per-install-versus-per-user registration question is answered
+in writing (per-install registration means these records accumulate forever,
+one per reinstall, with no cleanup story), **and** either a deletion path is
+found and written into §4, or unbounded accumulation is accepted explicitly
+with a stated bound on how bad it gets.
+*This gates §4's Logout section*, which today raises the question and answers
+nothing. Per-install registration must not ship before it is answered.
+
+**2. Commit `29d1199`'s subject line overclaims, permanently.** It reads
+"4,096 is a back-deploy fallback, not the iOS 27 value". The established
+finding is weaker: 4,096 is **not established as** the iOS 27 value, which is a
+different and weaker claim than asserting the iOS 27 value differs from 4,096.
+That commit is in shared history and is not being rewritten to fix a message,
+so the subject stays wrong forever; the correction currently exists only inside
+`API-NOTES.md`'s spike 3 entry, reachable from nothing a reader of this spec
+would open.
+*Owner:* anyone citing the context-window finding during Phase 1 — which, per
+§2's budget-enforcement section, is anyone touching the budget code.
+*Done when:* the claim is cited from `API-NOTES.md` rather than from the commit
+log. **Where the two disagree, `API-NOTES.md` is authoritative over the commit
+log.** This project's git history is not a source for what Phase 0 established.
 
 ## What exists today
 
@@ -348,6 +406,22 @@ probe-verified to survive the protocol boundary and still be readable inside
 `respond`), or fetched from inside `respond` at call time. **A rotating bearer
 token is the second kind**: it cannot be baked into `Configuration`, and §4's
 refresh actor must be reachable from inside `respond`.
+
+**That dependency is second-order — read §4 before building the actor.** The
+constraint above is probe-verified, but it is *stated in terms of* §4's token
+lifecycle, and that lifecycle is the unverified half of the Phase 1 gate.
+Spike 2 issued no token, so **refresh-token issuance is itself unconfirmed**:
+discovery lists `refresh_token` under `grant_types_supported`, which is a
+statement about the grant, not evidence that one is ever returned. If no
+refresh token is issued, a refresh actor built now is dead code written to a
+shape nobody has observed — and the real mechanism may turn out to be re-running
+the authorization leg rather than refreshing at all.
+
+What is safe to build now is the **seam**, not the protocol: whatever supplies
+a credential to `respond` must be resolved at call time rather than captured in
+`Configuration`. That is a property of the framework, probe-verified in spike 1,
+and it holds whatever the token mechanism turns out to be. Wire the seam; do
+not wire a refresh protocol to an unobserved contract.
 
 **Open, and not compile-checkable:** whether cancellation propagates from the
 session to the executor's `Task`. Needs an executable spike; not a Phase 0
