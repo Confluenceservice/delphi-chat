@@ -252,6 +252,11 @@ CF Access is not available in `wrangler dev`. Set `DEV_USER_EMAIL=you@example.co
 Worker fails closed and every `/api/*` route returns 401. Put that email in
 `ADMIN_EMAILS` too if you need the admin routes locally.
 
+Verified live on 2026-09-10 (`worker/auth.ts`'s `resolveUserEmail`, commit
+`f39623c`): with only `DEV_USER_EMAIL` set, unauthenticated
+`GET /api/threads` against `wrangler dev` returned `401`; adding
+`ALLOW_DEV_USER=true` and restarting made the same request return `200`.
+
 ## Deploy
 
 ```
