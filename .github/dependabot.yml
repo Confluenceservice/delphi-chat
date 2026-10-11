@@ -1,0 +1,26 @@
+# Dependabot: security alerts are always on for public repos; this adds
+# scheduled version-update PRs. Same shape as jimumember's config.
+#
+# Note: this repo has no CI yet, so a Dependabot PR showing no failing
+# checks has not actually been built or tested. Add a build workflow
+# before trusting "green" here.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Pacific/Auckland"
+    open-pull-requests-limit: 5
+    groups:
+      # wrangler and the workers types describe the same Cloudflare runtime;
+      # keep them in step.
+      cloudflare:
+        patterns: ["wrangler", "@cloudflare/*"]
+      # One PR for all other minor+patch bumps — keeps the queue reviewable.
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+    # Majors (react, vite, typescript, ...) arrive as individual PRs.
