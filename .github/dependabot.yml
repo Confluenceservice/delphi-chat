@@ -18,7 +18,7 @@ updates:
       # wrangler and the workers types describe the same Cloudflare runtime;
       # keep them in step.
       cloudflare:
-        patterns: ["wrangler", "@cloudflare/*"]
+        patterns: ["wrangler", "@cloudflare*"]   # not "@cloudflare/*", see cw-company-and-config-info
       # One PR for all other minor+patch bumps — keeps the queue reviewable.
       minor-and-patch:
         applies-to: version-updates
